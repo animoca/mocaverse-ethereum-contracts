@@ -6,7 +6,6 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract MocaPoints is Ownable, AccessControl {
-
     // Roles
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
@@ -22,8 +21,7 @@ contract MocaPoints is Ownable, AccessControl {
     address public adminAddress;
 
     // Balances mapping
-    mapping(bytes32 => mapping(uint256 => mapping(uint256 => uint256)))
-        private balances; // season => realmId => realmIdVersion => balance
+    mapping(bytes32 => mapping(uint256 => mapping(uint256 => uint256))) private balances; // season => realmId => realmIdVersion => balance
 
     // Nonce mapping
     mapping(uint256 => uint256) public nonces; // realmId => nonce
@@ -55,14 +53,8 @@ contract MocaPoints is Ownable, AccessControl {
     );
 
     constructor(address _realmIdContract, address _adminAddress) {
-        require(
-            address(_realmIdContract) != address(0),
-            "Not a valid Contract Address"
-        );
-        require(
-            address(_adminAddress) != address(0),
-            "Not a valid Admin Address"
-        );
+        require(address(_realmIdContract) != address(0), "Not a valid Contract Address");
+        require(address(_adminAddress) != address(0), "Not a valid Admin Address");
 
         _setupRole(ADMIN_ROLE, _adminAddress);
         realmIdContract = IRealmId(_realmIdContract);
@@ -86,27 +78,15 @@ contract MocaPoints is Ownable, AccessControl {
     }
 
     // Function to get the realmIdVersion from the RealmId contract
-    function _getRealmIdVersion(uint256 realmId)
-        internal
-        view
-        returns (uint256)
-    {
+    function _getRealmIdVersion(uint256 realmId) internal view returns (uint256) {
         return realmIdContract.burnCounts(realmId);
     }
 
-    function isReasonCodeAllowed(bytes32 reasonCode)
-        external
-        view
-        returns (bool)
-    {
+    function isReasonCodeAllowed(bytes32 reasonCode) external view returns (bool) {
         return allowedConsumeReasonCodes[reasonCode];
     }
 
-    function _prepareRealmId(bytes32 parentNode, string memory _name)
-        internal
-        view
-        returns (uint256)
-    {
+    function _prepareRealmId(bytes32 parentNode, string memory _name) internal view returns (uint256) {
         return realmIdContract.getTokenId(_name, parentNode);
     }
 
@@ -116,16 +96,10 @@ contract MocaPoints is Ownable, AccessControl {
         return _owner;
     }
 
-    function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes)
-        external
-        onlyAdmin
-    {
+    function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes) external onlyAdmin {
         // Check if each reason code is unique and does not already exist
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
-            require(
-                !allowedConsumeReasonCodes[_reasonCodes[i]],
-                "Reason code already exists"
-            );
+            require(!allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code already exists");
             allowedConsumeReasonCodes[_reasonCodes[i]] = true;
         }
 
@@ -133,10 +107,7 @@ contract MocaPoints is Ownable, AccessControl {
         emit BatchAddedConsumeReasonCode(_reasonCodes);
     }
 
-    function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes)
-        external
-        onlyAdmin
-    {
+    function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) external onlyAdmin {
         // Check if each reason code exists and can be removed
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
             // require(
@@ -150,34 +121,15 @@ contract MocaPoints is Ownable, AccessControl {
         emit BatchRemovedConsumeReasonCode(_reasonCodes);
     }
 
-    function _deposit(
-        bytes32 season,
-        uint256 realmId,
-        uint256 realmIdVersion,
-        uint256 amount,
-        bytes32 depositReasonCode
-    ) internal {
+    function _deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) internal {
         // Perform the deposit operation
         balances[season][realmId][realmIdVersion] += amount;
 
         // Emit the Deposit event
-        emit Deposited(
-            msg.sender,
-            season,
-            depositReasonCode,
-            realmId,
-            realmIdVersion,
-            amount
-        );
+        emit Deposited(msg.sender, season, depositReasonCode, realmId, realmIdVersion, amount);
     }
 
-    function deposit(
-        bytes32 season,
-        uint256 realmId,
-        uint256 realmIdVersion,
-        uint256 amount,
-        bytes32 depositReasonCode
-    ) external onlyDepositor {
+    function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) external onlyDepositor {
         // Check if the sender has the Depositor role
         require(hasRole(DEPOSITOR_ROLE, msg.sender), "Not a depositor");
 
@@ -210,158 +162,73 @@ contract MocaPoints is Ownable, AccessControl {
         bytes32 r,
         bytes32 s
     ) internal view returns (address) {
-        bytes32 messageHash = _preparePayload(
-            realmId,
-            realmIdVersion,
-            amount,
-            nonce,
-            consumeReasonCode
-        );
+        bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonce, consumeReasonCode);
         return ecrecover(messageHash, v, r, s);
     }
 
-    function _consumeWithSignature(
-        uint256 realmId,
-        uint256 amount,
-        bytes32 consumeReasonCode,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) internal {
+    function _consumeWithSignature(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) internal {
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
-        address signer = _getSigner(
-            realmId,
-            realmIdVersion,
-            amount,
-            nonces[realmId],
-            consumeReasonCode,
-            v,
-            r,
-            s
-        );
+        address signer = _getSigner(realmId, realmIdVersion, amount, nonces[realmId], consumeReasonCode, v, r, s);
         address owner_ = owner(realmId);
-        require(signer == owner_, "Signer is not the owner of the realmId");
+        require(signer == owner_, "Signer not owner of realmId");
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner_);
     }
 
-    function _consume(
-        uint256 realmId,
-        uint256 realmIdVersion,
-        uint256 amount,
-        bytes32 consumeReasonCode,
-        address owner_
-    ) internal {
+    function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner_) internal {
         // Check if the sender has enough balance
-        require(
-            balances[currentSeason][realmId][realmIdVersion] >= amount,
-            "Insufficient balance"
-        );
+        require(balances[currentSeason][realmId][realmIdVersion] >= amount, "Insufficient balance");
 
         // Check if the consumeReasonCode exists and is true in the mapping
-        require(
-            allowedConsumeReasonCodes[consumeReasonCode],
-            "Invalid consume reason code"
-        );
+        require(allowedConsumeReasonCodes[consumeReasonCode], "Invalid consume reason code");
 
         // Perform the consume operation
         balances[currentSeason][realmId][realmIdVersion] -= amount;
 
         // Emit the Consumed event
-        emit Consumed(
-            realmId,
-            currentSeason,
-            consumeReasonCode,
-            msg.sender,
-            nonces[realmId],
-            realmIdVersion,
-            amount,
-            owner_
-        );
+        emit Consumed(realmId, currentSeason, consumeReasonCode, msg.sender, nonces[realmId], realmIdVersion, amount, owner_);
         // Increment the nonce for the realmId
         nonces[realmId]++;
     }
 
-    function consume(
-        bytes32 parentNode,
-        string memory _name,
-        uint256 amount,
-        bytes32 consumeReasonCode,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external {
+    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
         // get the realmId using parentNode and name
         uint256 realmId = _prepareRealmId(parentNode, _name);
 
         _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
     }
 
-    function consume(
-        uint256 realmId,
-        uint256 amount,
-        bytes32 consumeReasonCode,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external {
+    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
         _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
     }
 
-    function _consumeWithoutSignature(
-        uint256 realmId,
-        uint256 amount,
-        bytes32 consumeReasonCode
-    ) internal {
+    function _consumeWithoutSignature(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) internal {
         address owner_ = owner(realmId);
-        require(msg.sender == owner_, "Signer is not the owner of the realmId");
+        require(msg.sender == owner_, "Signer not owner of realmId");
 
         // Call the common _consume function for the core consume operation
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
-        _consume(
-            realmId,
-            realmIdVersion,
-            amount,
-            consumeReasonCode,
-            msg.sender
-        );
+        _consume(realmId, realmIdVersion, amount, consumeReasonCode, msg.sender);
     }
 
-    function consume(
-        bytes32 parentNode,
-        string memory _name,
-        uint256 amount,
-        bytes32 consumeReasonCode
-    ) external {
+    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) external {
         // Compute the realmId using the provided parentNode and name
         uint256 realmId = _prepareRealmId(parentNode, _name);
 
-        _consumeWithoutSignature(realmId, amount,consumeReasonCode);
+        _consumeWithoutSignature(realmId, amount, consumeReasonCode);
     }
 
-    function consume(
-        uint256 realmId,
-        uint256 amount,
-        bytes32 consumeReasonCode
-    ) external {
-        _consumeWithoutSignature(realmId, amount,consumeReasonCode);
+    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) external {
+        _consumeWithoutSignature(realmId, amount, consumeReasonCode);
     }
 
-    function balanceOf(bytes32 season, uint256 realmId)
-        external
-        view
-        returns (uint256)
-    {
+    function balanceOf(bytes32 season, uint256 realmId) external view returns (uint256) {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
 
         return balances[season][realmId][realmIdVersion];
     }
 
-    function balanceOf(
-        bytes32 season,
-        bytes32 parentNode,
-        string memory _name
-    ) external view returns (uint256) {
+    function balanceOf(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
         uint256 realmId = _prepareRealmId(parentNode, _name);
 
@@ -380,11 +247,7 @@ contract MocaPoints is Ownable, AccessControl {
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
-    function balanceOf(bytes32 parentNode, string memory _name)
-        external
-        view
-        returns (uint256)
-    {
+    function balanceOf(bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
         uint256 realmId = _prepareRealmId(parentNode, _name);
 
@@ -403,36 +266,15 @@ contract MocaPoints is Ownable, AccessControl {
         uint256 nonce,
         bytes32 reasonCode
     ) internal view returns (bytes32) {
-        bytes32 payload = keccak256(
-            abi.encodePacked(
-                realmId,
-                realmIdVersion,
-                amount,
-                currentSeason,
-                reasonCode,
-                nonce
-            )
-        );
+        bytes32 payload = keccak256(abi.encodePacked(realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce));
         return payload;
     }
 
     // Return the payload which is generated using the arguments, current nonce, current season, and the realmId version
-    function preparePayload(
-        uint256 realmId,
-        uint256 amount,
-        bytes32 reasonCode
-    ) external view returns (bytes32) {
+    function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) external view returns (bytes32) {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
 
-        return (
-            _preparePayload(
-                realmId,
-                realmIdVersion,
-                amount,
-                nonces[realmId],
-                reasonCode
-            )
-        );
+        return (_preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode));
     }
 }
