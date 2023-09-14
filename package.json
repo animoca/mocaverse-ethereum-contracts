@@ -45,6 +45,7 @@
     "@nomicfoundation/hardhat-network-helpers": "^1.0.8",
     "@nomiclabs/hardhat-ethers": "^2.2.2",
     "@openzeppelin/contracts": "=4.8.2",
+    "@openzeppelin/contracts-upgradeable": "^4.9.3",
     "chai": "^4.3.7",
     "cross-env": "^7.0.3",
     "eslint": "^8.37.0",

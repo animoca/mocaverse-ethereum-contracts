@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.9;
 
 import {IRealmId} from "./interface/IRealmId.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-contract MocaPoints is Ownable, AccessControl {
+contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     // Roles
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
@@ -52,14 +56,27 @@ contract MocaPoints is Ownable, AccessControl {
         address realmIdOwner
     );
 
-    constructor(address _realmIdContract, address _adminAddress) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _realmIdContract, address _adminAddress) public initializer {
+        __Pausable_init();
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+
         require(address(_realmIdContract) != address(0), "Not a valid Contract Address");
         require(address(_adminAddress) != address(0), "Not a valid Admin Address");
 
-        _setRoleAdmin(ADMIN_ROLE, ADMIN_ROLE);
+        _grantRole(DEFAULT_ADMIN_ROLE, _adminAddress);
+        _grantRole(PAUSER_ROLE, _adminAddress);
+        _grantRole(UPGRADER_ROLE, _adminAddress);
         _grantRole(ADMIN_ROLE, _adminAddress);
         realmIdContract = IRealmId(_realmIdContract);
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
 
     modifier onlyAdmin() {
         require(hasRole(ADMIN_ROLE, msg.sender), "Not an admin");
@@ -69,6 +86,14 @@ contract MocaPoints is Ownable, AccessControl {
     modifier onlyDepositor() {
         require(hasRole(DEPOSITOR_ROLE, msg.sender), "Not a depositor");
         _;
+    }
+
+    function pause() public onlyRole(PAUSER_ROLE) {
+        _pause();
+    }
+
+    function unpause() public onlyRole(PAUSER_ROLE) {
+        _unpause();
     }
 
     function setCurrentSeason(bytes32 _season) external onlyAdmin {
