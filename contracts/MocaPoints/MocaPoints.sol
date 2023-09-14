@@ -57,6 +57,7 @@ contract MocaPoints is Ownable, AccessControl {
         require(address(_adminAddress) != address(0), "Not a valid Admin Address");
 
         _setRoleAdmin(ADMIN_ROLE, ADMIN_ROLE);
+        _grantRole(ADMIN_ROLE, _adminAddress);
         realmIdContract = IRealmId(_realmIdContract);
     }
 
