@@ -73,6 +73,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         _grantRole(PAUSER_ROLE, _adminAddress);
         _grantRole(UPGRADER_ROLE, _adminAddress);
         _grantRole(ADMIN_ROLE, _adminAddress);
+        _grantRole(DEPOSITOR_ROLE, _adminAddress);
         realmIdContract = IRealmId(_realmIdContract);
     }
 
