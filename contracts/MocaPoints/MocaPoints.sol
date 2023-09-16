@@ -164,7 +164,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         _deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
     }
 
-    function deposit(
+    function depositWithParentnode(
         bytes32 season,
         bytes32 parentNode,
         string memory name,
@@ -217,14 +217,22 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         nonces[realmId]++;
     }
 
-    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
+    function consumeWithParentnodeVRS(
+        bytes32 parentNode,
+        string memory _name,
+        uint256 amount,
+        bytes32 consumeReasonCode,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
         // get the realmId using parentNode and name
         uint256 realmId = _prepareRealmId(parentNode, _name);
 
         _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
     }
 
-    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
+    function consumeWithRealmIdVRS(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
         _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
     }
 
@@ -237,14 +245,14 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, msg.sender);
     }
 
-    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) external {
+    function consumeWithParentnode(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) external {
         // Compute the realmId using the provided parentNode and name
         uint256 realmId = _prepareRealmId(parentNode, _name);
 
         _consumeWithoutSignature(realmId, amount, consumeReasonCode);
     }
 
-    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) external {
+    function consumeWithRealmId(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) external {
         _consumeWithoutSignature(realmId, amount, consumeReasonCode);
     }
 
