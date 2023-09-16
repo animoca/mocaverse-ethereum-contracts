@@ -113,7 +113,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         return allowedConsumeReasonCodes[reasonCode];
     }
 
-    function _prepareRealmId(bytes32 parentNode, string memory _name) internal view returns (uint256) {
+    function prepareRealmId(bytes32 parentNode, string memory _name) public view returns (uint256) {
         return realmIdContract.getTokenId(_name, parentNode);
     }
 
@@ -173,7 +173,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         bytes32 depositReasonCode
     ) external onlyDepositor {
         // Create the realmId using parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, name);
+        uint256 realmId = prepareRealmId(parentNode, name);
 
         // Call the internal _deposit function to perform the deposit operation
         _deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
@@ -227,7 +227,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         bytes32 s
     ) external {
         // get the realmId using parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, _name);
+        uint256 realmId = prepareRealmId(parentNode, _name);
 
         _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
     }
@@ -247,7 +247,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
 
     function consumeWithParentnode(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) external {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, _name);
+        uint256 realmId = prepareRealmId(parentNode, _name);
 
         _consumeWithoutSignature(realmId, amount, consumeReasonCode);
     }
@@ -265,7 +265,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
 
     function balanceOf(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, _name);
+        uint256 realmId = prepareRealmId(parentNode, _name);
 
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
@@ -284,7 +284,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
 
     function balanceOf(bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, _name);
+        uint256 realmId = prepareRealmId(parentNode, _name);
 
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
