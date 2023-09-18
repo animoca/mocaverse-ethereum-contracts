@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-import {IRealmId} from "./interface/IRealmId.sol";
+import {IRealmId} from "./interface/mock/IRealmId.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -113,7 +113,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         return allowedConsumeReasonCodes[reasonCode];
     }
 
-    function prepareRealmId(bytes32 parentNode, string memory _name) public view returns (uint256) {
+    function _prepareRealmId(bytes32 parentNode, string memory _name) internal view returns (uint256) {
         return realmIdContract.getTokenId(_name, parentNode);
     }
 
@@ -173,7 +173,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         bytes32 depositReasonCode
     ) external onlyDepositor {
         // Create the realmId using parentNode and name
-        uint256 realmId = prepareRealmId(parentNode, name);
+        uint256 realmId = _prepareRealmId(parentNode, name);
 
         // Call the internal _deposit function to perform the deposit operation
         _deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
@@ -201,7 +201,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner_);
     }
 
-    function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner_) internal {
+    function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner_) internal whenNotPaused {
         // Check if the sender has enough balance
         require(balances[currentSeason][realmId][realmIdVersion] >= amount, "Insufficient balance");
 
@@ -217,6 +217,15 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         nonces[realmId]++;
     }
 
+    function _consumeWithoutSignature(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) internal {
+        address owner_ = owner(realmId);
+        require(msg.sender == owner_, "Signer not owner of realmId");
+
+        // Call the common _consume function for the core consume operation
+        uint256 realmIdVersion = _getRealmIdVersion(realmId);
+        _consume(realmId, realmIdVersion, amount, consumeReasonCode, msg.sender);
+    }
+
     function consumeWithParentnodeVRS(
         bytes32 parentNode,
         string memory _name,
@@ -227,7 +236,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         bytes32 s
     ) external {
         // get the realmId using parentNode and name
-        uint256 realmId = prepareRealmId(parentNode, _name);
+        uint256 realmId = _prepareRealmId(parentNode, _name);
 
         _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
     }
@@ -236,18 +245,9 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
     }
 
-    function _consumeWithoutSignature(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) internal {
-        address owner_ = owner(realmId);
-        require(msg.sender == owner_, "Signer not owner of realmId");
-
-        // Call the common _consume function for the core consume operation
-        uint256 realmIdVersion = _getRealmIdVersion(realmId);
-        _consume(realmId, realmIdVersion, amount, consumeReasonCode, msg.sender);
-    }
-
     function consumeWithParentnode(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) external {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = prepareRealmId(parentNode, _name);
+        uint256 realmId = _prepareRealmId(parentNode, _name);
 
         _consumeWithoutSignature(realmId, amount, consumeReasonCode);
     }
@@ -256,16 +256,16 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         _consumeWithoutSignature(realmId, amount, consumeReasonCode);
     }
 
-    function balanceOf(bytes32 season, uint256 realmId) external view returns (uint256) {
+    function balanceOfWithSeasonRealmId(bytes32 season, uint256 realmId) external view returns (uint256) {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
 
         return balances[season][realmId][realmIdVersion];
     }
 
-    function balanceOf(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
+    function balanceOfWithSeason(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = prepareRealmId(parentNode, _name);
+        uint256 realmId = _prepareRealmId(parentNode, _name);
 
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
@@ -274,7 +274,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         return balances[season][realmId][realmIdVersion];
     }
 
-    function balanceOf(uint256 realmId) external view returns (uint256) {
+    function balanceOfWithRealmId(uint256 realmId) external view returns (uint256) {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
 
@@ -282,9 +282,9 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
-    function balanceOf(bytes32 parentNode, string memory _name) external view returns (uint256) {
+    function balanceOfWithParentNodeName(bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = prepareRealmId(parentNode, _name);
+        uint256 realmId = _prepareRealmId(parentNode, _name);
 
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = _getRealmIdVersion(realmId);
