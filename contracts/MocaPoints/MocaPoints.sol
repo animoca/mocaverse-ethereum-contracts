@@ -2,17 +2,17 @@
 pragma solidity ^0.8.9;
 
 import {IRealmId} from "./interface/mock/IRealmId.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {AccessControlStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/AccessControlStorage.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
+contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
+    // Roles
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    // Roles
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
+    // using ECDSA for bytes32;
 
     // Seasonal variables
     bytes32 public currentSeason;
@@ -21,17 +21,14 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
     // Address of the RealmId contract
     IRealmId public realmIdContract;
 
-    // Admin Address
-    address public adminAddress;
-
     // Balances mapping
-    mapping(bytes32 => mapping(uint256 => mapping(uint256 => uint256))) private balances; // season => realmId => realmIdVersion => balance
+    mapping(bytes32 => mapping(uint256 => mapping(uint256 => uint256))) public balances; // season => realmId => realmIdVersion => balance
 
     // Nonce mapping
     mapping(uint256 => uint256) public nonces; // realmId => nonce
 
     // Allowed consume reason codes mapping
-    mapping(bytes32 => bool) private allowedConsumeReasonCodes;
+    mapping(bytes32 => bool) public allowedConsumeReasonCodes;
 
     event SetCurrentSeason(bytes32 season);
     event BatchAddedConsumeReasonCode(bytes32[] reasonCodes);
@@ -50,10 +47,10 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         bytes32 indexed season,
         bytes32 indexed reasonCode,
         address operator,
-        uint256 nonce,
         uint256 realmIdVersion,
         uint256 amount,
-        address realmIdOwner
+        address realmIdOwner,
+        uint256 nonce
     );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -62,7 +59,6 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
     }
 
     function initialize(address _realmIdContract, address _adminAddress) public initializer {
-        __Pausable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
 
@@ -70,60 +66,21 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         require(address(_adminAddress) != address(0), "Not a valid Admin Address");
 
         _grantRole(DEFAULT_ADMIN_ROLE, _adminAddress);
-        _grantRole(PAUSER_ROLE, _adminAddress);
-        _grantRole(UPGRADER_ROLE, _adminAddress);
-        _grantRole(ADMIN_ROLE, _adminAddress);
-        _grantRole(DEPOSITOR_ROLE, _adminAddress);
         realmIdContract = IRealmId(_realmIdContract);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
 
-    modifier onlyAdmin() {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Not an admin");
-        _;
-    }
-
-    modifier onlyDepositor() {
-        require(hasRole(DEPOSITOR_ROLE, msg.sender), "Not a depositor");
-        _;
-    }
-
-    function pause() public onlyRole(PAUSER_ROLE) {
-        _pause();
-    }
-
-    function unpause() public onlyRole(PAUSER_ROLE) {
-        _unpause();
-    }
-
-    function setCurrentSeason(bytes32 _season) external onlyAdmin {
+    function setCurrentSeason(bytes32 _season) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not an admin");
         require(!seasons[_season], "Season already set");
         currentSeason = _season;
         seasons[_season] = true;
         emit SetCurrentSeason(_season);
     }
 
-    // Function to get the realmIdVersion from the RealmId contract
-    function _getRealmIdVersion(uint256 realmId) internal view returns (uint256) {
-        return realmIdContract.burnCounts(realmId);
-    }
-
-    function isReasonCodeAllowed(bytes32 reasonCode) external view returns (bool) {
-        return allowedConsumeReasonCodes[reasonCode];
-    }
-
-    function _prepareRealmId(bytes32 parentNode, string memory _name) internal view returns (uint256) {
-        return realmIdContract.getTokenId(_name, parentNode);
-    }
-
-    // Function to get the owner of a realmId from the RealmId contract
-    function owner(uint256 realmId) internal view returns (address) {
-        address _owner = realmIdContract.ownerOf(realmId);
-        return _owner;
-    }
-
-    function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes) external onlyAdmin {
+    function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not an admin");
         // Check if each reason code is unique and does not already exist
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
             require(!allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code already exists");
@@ -134,13 +91,12 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         emit BatchAddedConsumeReasonCode(_reasonCodes);
     }
 
-    function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) external onlyAdmin {
+    function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not an admin");
+
         // Check if each reason code exists and can be removed
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
-            // require(
-            //     allowedConsumeReasonCodes[_reasonCodes[i]],
-            //     "Reason code does not exist"
-            // );
+            require(allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code does not exist");
             delete allowedConsumeReasonCodes[_reasonCodes[i]];
         }
 
@@ -148,20 +104,15 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         emit BatchRemovedConsumeReasonCode(_reasonCodes);
     }
 
-    function _deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) internal {
-        // Perform the deposit operation
-        balances[season][realmId][realmIdVersion] += amount;
-
-        // Emit the Deposit event
-        emit Deposited(msg.sender, season, depositReasonCode, realmId, realmIdVersion, amount);
-    }
-
-    function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) external onlyDepositor {
+    function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public {
         // Check if the sender has the Depositor role
         require(hasRole(DEPOSITOR_ROLE, msg.sender), "Not a depositor");
 
         // Call the internal _deposit function to perform the deposit operation
-        _deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
+        balances[season][realmId][realmIdVersion] += amount;
+
+        // Emit the Deposit event
+        emit Deposited(msg.sender, season, depositReasonCode, realmId, realmIdVersion, amount);
     }
 
     function depositWithParentnode(
@@ -171,12 +122,12 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         uint256 realmIdVersion,
         uint256 amount,
         bytes32 depositReasonCode
-    ) external onlyDepositor {
+    ) public {
         // Create the realmId using parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, name);
+        uint256 realmId = realmIdContract.getTokenId(name, parentNode);
 
         // Call the internal _deposit function to perform the deposit operation
-        _deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
+        deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
     }
 
     function _getSigner(
@@ -188,20 +139,13 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) internal view returns (address) {
-        bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonce, consumeReasonCode);
-        return ecrecover(messageHash, v, r, s);
+    ) public view returns (address) {
+        bytes32 _messageHash = _preparePayload(realmId, realmIdVersion, amount, consumeReasonCode, nonce);
+        bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
+        return ecrecover(messageDigest, v, r, s);
     }
 
-    function _consumeWithSignature(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) internal {
-        uint256 realmIdVersion = _getRealmIdVersion(realmId);
-        address signer = _getSigner(realmId, realmIdVersion, amount, nonces[realmId], consumeReasonCode, v, r, s);
-        address owner_ = owner(realmId);
-        require(signer == owner_, "Signer not owner of realmId");
-        _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner_);
-    }
-
-    function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner_) internal whenNotPaused {
+    function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner_) internal {
         // Check if the sender has enough balance
         require(balances[currentSeason][realmId][realmIdVersion] >= amount, "Insufficient balance");
 
@@ -212,18 +156,9 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         balances[currentSeason][realmId][realmIdVersion] -= amount;
 
         // Emit the Consumed event
-        emit Consumed(realmId, currentSeason, consumeReasonCode, msg.sender, nonces[realmId], realmIdVersion, amount, owner_);
+        emit Consumed(realmId, currentSeason, consumeReasonCode, msg.sender, realmIdVersion, amount, owner_, nonces[realmId]);
         // Increment the nonce for the realmId
         nonces[realmId]++;
-    }
-
-    function _consumeWithoutSignature(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) internal {
-        address owner_ = owner(realmId);
-        require(msg.sender == owner_, "Signer not owner of realmId");
-
-        // Call the common _consume function for the core consume operation
-        uint256 realmIdVersion = _getRealmIdVersion(realmId);
-        _consume(realmId, realmIdVersion, amount, consumeReasonCode, msg.sender);
     }
 
     function consumeWithParentnodeVRS(
@@ -234,41 +169,50 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external {
+    ) public {
         // get the realmId using parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, _name);
+        uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
 
-        _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
+        consumeWithRealmIdVRS(realmId, amount, consumeReasonCode, v, r, s);
     }
 
-    function consumeWithRealmIdVRS(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
-        _consumeWithSignature(realmId, amount, consumeReasonCode, v, r, s);
+    function consumeWithRealmIdVRS(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
+        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        address signer = _getSigner(realmId, realmIdVersion, amount, nonces[realmId], consumeReasonCode, v, r, s);
+        address owner_ = realmIdContract.ownerOf(realmId);
+        require(signer == owner_, "Signer not owner of realmId");
+        _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner_);
     }
 
-    function consumeWithParentnode(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) external {
+    function consumeWithParentnode(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) public {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, _name);
-
-        _consumeWithoutSignature(realmId, amount, consumeReasonCode);
+        uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
+        // consumWithrealId call
+        consumeWithRealmId(realmId, amount, consumeReasonCode);
     }
 
-    function consumeWithRealmId(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) external {
-        _consumeWithoutSignature(realmId, amount, consumeReasonCode);
+    function consumeWithRealmId(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) public {
+        address owner_ = realmIdContract.ownerOf(realmId);
+        require(msg.sender == owner_, "Sender not owner of realmId");
+
+        // Call the common _consume function for the core consume operation
+        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        _consume(realmId, realmIdVersion, amount, consumeReasonCode, msg.sender);
     }
 
     function balanceOfWithSeasonRealmId(bytes32 season, uint256 realmId) external view returns (uint256) {
         // get realmIdVersion from the realmId contract
-        uint256 realmIdVersion = _getRealmIdVersion(realmId);
+        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
 
         return balances[season][realmId][realmIdVersion];
     }
 
     function balanceOfWithSeason(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, _name);
+        uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
 
         // get realmIdVersion from the realmId contract
-        uint256 realmIdVersion = _getRealmIdVersion(realmId);
+        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
 
         // Retrieve and return the balance for the calculated realmId
         return balances[season][realmId][realmIdVersion];
@@ -276,7 +220,7 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
 
     function balanceOfWithRealmId(uint256 realmId) external view returns (uint256) {
         // get realmIdVersion from the realmId contract
-        uint256 realmIdVersion = _getRealmIdVersion(realmId);
+        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
 
         // Retrieve and return the balance for the given realmId at the current season
         return balances[currentSeason][realmId][realmIdVersion];
@@ -284,10 +228,10 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
 
     function balanceOfWithParentNodeName(bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
-        uint256 realmId = _prepareRealmId(parentNode, _name);
+        uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
 
         // get realmIdVersion from the realmId contract
-        uint256 realmIdVersion = _getRealmIdVersion(realmId);
+        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
 
         // Retrieve and return the balance for the given realmId at the current season
         return balances[currentSeason][realmId][realmIdVersion];
@@ -298,18 +242,18 @@ contract MocaPoints is Initializable, PausableUpgradeable, AccessControlUpgradea
         uint256 realmId,
         uint256 realmIdVersion,
         uint256 amount,
-        uint256 nonce,
-        bytes32 reasonCode
+        bytes32 reasonCode,
+        uint256 nonce
     ) internal view returns (bytes32) {
         bytes32 payload = keccak256(abi.encodePacked(realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce));
         return payload;
     }
 
     // Return the payload which is generated using the arguments, current nonce, current season, and the realmId version
-    function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) external view returns (bytes32) {
+    function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
         // get realmIdVersion from the realmId contract
-        uint256 realmIdVersion = _getRealmIdVersion(realmId);
+        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
 
-        return (_preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode));
+        return (_preparePayload(realmId, realmIdVersion, amount, reasonCode, nonces[realmId]));
     }
 }
