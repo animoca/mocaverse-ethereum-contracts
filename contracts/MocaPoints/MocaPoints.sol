@@ -12,7 +12,6 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
-    // using ECDSA for bytes32;
 
     // Seasonal variables
     bytes32 public currentSeason;
@@ -115,7 +114,7 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         emit Deposited(msg.sender, season, depositReasonCode, realmId, realmIdVersion, amount);
     }
 
-    function depositWithParentnode(
+    function deposit(
         bytes32 season,
         bytes32 parentNode,
         string memory name,
@@ -123,6 +122,14 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         uint256 amount,
         bytes32 depositReasonCode
     ) public {
+        // Create the realmId using parentNode and name
+        uint256 realmId = realmIdContract.getTokenId(name, parentNode);
+
+        // Call the internal _deposit function to perform the deposit operation
+        deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
+    }
+
+    function test(bytes32 season, bytes32 parentNode, string memory name, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public {
         // Create the realmId using parentNode and name
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
 
@@ -139,7 +146,7 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public view returns (address) {
+    ) internal view returns (address) {
         bytes32 _messageHash = _preparePayload(realmId, realmIdVersion, amount, consumeReasonCode, nonce);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
         return ecrecover(messageDigest, v, r, s);
@@ -161,22 +168,14 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         nonces[realmId]++;
     }
 
-    function consumeWithParentnodeVRS(
-        bytes32 parentNode,
-        string memory _name,
-        uint256 amount,
-        bytes32 consumeReasonCode,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) public {
+    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         // get the realmId using parentNode and name
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
 
-        consumeWithRealmIdVRS(realmId, amount, consumeReasonCode, v, r, s);
+        consume(realmId, amount, consumeReasonCode, v, r, s);
     }
 
-    function consumeWithRealmIdVRS(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
+    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         address signer = _getSigner(realmId, realmIdVersion, amount, nonces[realmId], consumeReasonCode, v, r, s);
         address owner_ = realmIdContract.ownerOf(realmId);
@@ -184,14 +183,14 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner_);
     }
 
-    function consumeWithParentnode(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) public {
+    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) public {
         // Compute the realmId using the provided parentNode and name
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         // consumWithrealId call
-        consumeWithRealmId(realmId, amount, consumeReasonCode);
+        consume(realmId, amount, consumeReasonCode);
     }
 
-    function consumeWithRealmId(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) public {
+    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) public {
         address owner_ = realmIdContract.ownerOf(realmId);
         require(msg.sender == owner_, "Sender not owner of realmId");
 
@@ -200,14 +199,14 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, msg.sender);
     }
 
-    function balanceOfWithSeasonRealmId(bytes32 season, uint256 realmId) external view returns (uint256) {
+    function balanceOf(bytes32 season, uint256 realmId) external view returns (uint256) {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
 
         return balances[season][realmId][realmIdVersion];
     }
 
-    function balanceOfWithSeason(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
+    function balanceOf(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
 
@@ -218,7 +217,7 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         return balances[season][realmId][realmIdVersion];
     }
 
-    function balanceOfWithRealmId(uint256 realmId) external view returns (uint256) {
+    function balanceOf(uint256 realmId) external view returns (uint256) {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
 
@@ -226,7 +225,7 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
-    function balanceOfWithParentNodeName(bytes32 parentNode, string memory _name) external view returns (uint256) {
+    function balanceOf(bytes32 parentNode, string memory _name) external view returns (uint256) {
         // Compute the realmId using the provided parentNode and name
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
 

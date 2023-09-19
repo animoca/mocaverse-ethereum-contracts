@@ -1,12 +1,12 @@
+/* eslint-disable max-len */
 /* eslint-disable mocha/no-identical-title */
 const {expect} = require('chai');
 const {BigNumber} = require('ethers');
 const {ethers, upgrades} = require('hardhat');
-// const {deploy, save} = deployments;
 require('dotenv').config();
 
 describe('MocaPoints-Test', function () {
-  let depositor, consumer, recipient, signer, other, ADMIN_ROLE, DEPOSITOR_ROLE, PAUSER_ROLE, UPGRADER_ROLE, DEFAULT_ADMIN_ROLE;
+  let depositor, recipient, signer, other, DEPOSITOR_ROLE, PAUSER_ROLE, UPGRADER_ROLE;
   let mocaPoints;
   let mockRealmContract;
 
@@ -34,7 +34,6 @@ describe('MocaPoints-Test', function () {
     await expect(mocaPoints.connect(signer).setCurrentSeason(newSeason)).to.be.revertedWith('Season already set');
   });
 
-  // working
   it('should add and prevent adding duplicate reason codes', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
@@ -60,10 +59,10 @@ describe('MocaPoints-Test', function () {
     expect(await mocaPoints.connect(signer).allowedConsumeReasonCodes(reasonCode1)).to.equal(false);
   });
 
-  // DEPOSIT TEST
+  // // DEPOSIT TEST
 
   it('should deposit tokens and update balances correctly with deposit function', async function () {
-    const reasonCode1 = ethers.encodeBytes32String('reason');
+    const reasonCode = ethers.encodeBytes32String('reason');
     const season = ethers.encodeBytes32String('season');
     const parentNode = ethers.encodeBytes32String('parentNode');
     const name = 'bishal';
@@ -72,40 +71,40 @@ describe('MocaPoints-Test', function () {
     const realmId = await mockRealmContract.getTokenId(name, parentNode);
     const realmIdVersion = await mockRealmContract.burnCounts(realmId);
     // Call the contract function and wait for the result
-    const balance = Number(await mocaPoints.balanceOfWithSeasonRealmId(season, realmId));
+    const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
 
-    // Deposit tokens for an account
-    await mocaPoints.connect(depositor).deposit(season, realmId, realmIdVersion, amount, reasonCode1);
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, realmIdVersion, amount, reasonCode);
 
     // After depositing, get the updated balance for the same account
-    const updatedBalance = await mocaPoints.balanceOfWithSeasonRealmId(season, realmId);
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
     const finalbalance = balance + 100;
 
     // Check that the balance increased by the deposited amount
     expect(updatedBalance).to.equal(finalbalance);
   });
 
-  it('should deposit tokens and update balances correctly with depositWithParentnode function', async function () {
+  it('should deposit tokens and update balances correctly with season and realmId function', async function () {
     const reasonCode = ethers.encodeBytes32String('reason');
     const season = ethers.encodeBytes32String('season');
     const parentNode = ethers.encodeBytes32String('moca');
     const name = 'bishal';
     const amount = 100;
 
-    // const preData = ethers.toUtf8Bytes('data');
-    // const label = 'bist';
-
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    const balance = Number(await mocaPoints.balanceOfWithSeasonRealmId(season, realmId));
+    // const realmId = await mockRealmContract.getTokenId(name, parentNode);
+    const realmId = await mockRealmContract['getTokenId(string, bytes32)'](name, parentNode);
+    const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
+    const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
 
-    // Deposit tokens for an account
-    await mocaPoints.connect(depositor).depositWithParentnode(season, parentNode, name, realmIdVersion, amount, reasonCode);
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, realmIdVersion, amount, reasonCode);
 
     // After depositing, get the updated balance for the same account
-    const updatedBalance = await mocaPoints.balanceOfWithSeasonRealmId(season, realmId);
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
     const finalbalance = balance + 100;
 
     // Check that the balance increased by the deposited amount
@@ -122,10 +121,17 @@ describe('MocaPoints-Test', function () {
     const reasonCode = ethers.encodeBytes32String('reason');
     const realmId = await mockRealmContract.getTokenId(name, parentNode);
     const realmIdVersion = mockRealmContract.burnCounts(realmId);
-    const balance = Number(await mocaPoints.balanceOfWithSeasonRealmId(season, realmId));
+    const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
+    await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId);
+
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
-    await mocaPoints.connect(depositor).deposit(season, realmId, realmIdVersion, amount, reasonCode);
-    const updatedBalance = Number(await mocaPoints.balanceOfWithSeasonRealmId(season, realmId));
+
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, realmIdVersion, amount, reasonCode);
+
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
+
     const expectedBalance = balance + 100;
 
     expect(updatedBalance).to.equal(expectedBalance);
@@ -139,10 +145,15 @@ describe('MocaPoints-Test', function () {
     const reasonCode = ethers.encodeBytes32String('reason');
     const realmId = await mockRealmContract.getTokenId(name, parentNode);
     const realmIdVersion = mockRealmContract.burnCounts(realmId);
-    const balance = Number(await mocaPoints.balanceOfWithSeason(season, parentNode, name));
+    const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,bytes32,string)'](season, parentNode, name));
+
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
-    await mocaPoints.connect(depositor).deposit(season, realmId, realmIdVersion, amount, reasonCode);
-    const updatedBalance = Number(await mocaPoints.balanceOfWithSeason(season, parentNode, name));
+
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, realmIdVersion, amount, reasonCode);
+
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,bytes32,string)'](season, parentNode, name));
 
     const expectedBalance = balance + 100;
 
@@ -157,10 +168,14 @@ describe('MocaPoints-Test', function () {
     const reasonCode = ethers.encodeBytes32String('reason');
     const realmId = await mockRealmContract.getTokenId(name, parentNode);
     const realmIdVersion = mockRealmContract.burnCounts(realmId);
-    const balance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+    const balance = Number(await mocaPoints.connect(depositor)['balanceOf(uint256)'](realmId));
+
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
-    await mocaPoints.connect(depositor).deposit(currentSeason, realmId, realmIdVersion, amount, reasonCode);
-    const updatedBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(uint256)'](realmId));
 
     const expectedBalance = balance + 100;
 
@@ -175,18 +190,25 @@ describe('MocaPoints-Test', function () {
     const reasonCode = ethers.encodeBytes32String('reason');
     const realmId = await mockRealmContract.getTokenId(name, parentNode);
     const realmIdVersion = mockRealmContract.burnCounts(realmId);
-    const balance = Number(await mocaPoints.balanceOfWithParentNodeName(parentNode, name));
+
+    const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,string)'](parentNode, name));
+
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
-    await mocaPoints.connect(depositor).deposit(currentSeason, realmId, realmIdVersion, amount, reasonCode);
-    const updatedBalance = Number(await mocaPoints.connect(signer).balanceOfWithParentNodeName(parentNode, name));
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
+
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,string)'](parentNode, name));
+
     const expectedBalance = balance + 100;
 
     expect(updatedBalance).to.equal(expectedBalance);
   });
 
+  // CONSUME TEST
   it('should consume tokens with parent node and verify the signature', async function () {
-    const reasonCode1 = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(signer).batchAddConsumeReasonCodes([reasonCode1]);
+    const reasonCode = ethers.encodeBytes32String('Reason1');
+    await mocaPoints.connect(signer).batchAddConsumeReasonCodes([reasonCode]);
     const parentNode = ethers.encodeBytes32String('parentNode');
     const name = 'bishal';
     const currentSeason = await mocaPoints.currentSeason();
@@ -196,28 +218,30 @@ describe('MocaPoints-Test', function () {
     const amount = 20;
 
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
-    // Get the realmId for the registered name and parent node
-    await mocaPoints.connect(depositor).deposit(currentSeason, realmId, realmIdVersion, amount, reasonCode1);
+
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
 
     // Get the initial balance of the realmId
-    const initialBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+    const initialBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
 
     // Create a unique message to sign
     const message = ethers.solidityPackedKeccak256(
       ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-      [realmId, realmIdVersion, amount, currentSeason, reasonCode1, nonce]
+      [realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce]
     );
 
     // Sign the message with the consumer's private key
-    // const signature = await signer.signMessage(message);
     const signature = await signer.signMessage(ethers.getBytes(message));
 
     const {v, r, s} = ethers.Signature.from(signature);
 
-    await mocaPoints.connect(signer).consumeWithParentnodeVRS(parentNode, name, amount, reasonCode1, v, r, s);
+    // await mocaPoints.connect(signer).consumeWithParentnodeVRS(parentNode, name, amount, reasonCode1, v, r, s);
+    await mocaPoints.connect(signer)['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, reasonCode, v, r, s);
 
     // Get the updated balance of the realmId after consumption
-    const updatedBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
     const finalbalance = initialBalance - amount;
 
     // Check that the balance decreased by the consumed amount
@@ -225,8 +249,8 @@ describe('MocaPoints-Test', function () {
   });
 
   it('should consume tokens with realmId and verify the signature', async function () {
-    const reasonCode1 = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(signer).batchAddConsumeReasonCodes([reasonCode1]);
+    const reasonCode = ethers.encodeBytes32String('Reason1');
+    await mocaPoints.connect(signer).batchAddConsumeReasonCodes([reasonCode]);
     const parentNode = ethers.encodeBytes32String('parentNode');
     const name = 'bishal';
     const currentSeason = await mocaPoints.currentSeason();
@@ -236,25 +260,26 @@ describe('MocaPoints-Test', function () {
     const amount = 20;
 
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
-    // Get the realmId for the registered name and parent node
-    await mocaPoints.connect(depositor).deposit(currentSeason, realmId, realmIdVersion, amount, reasonCode1);
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
 
     // Get the initial balance of the realmId
-    const initialBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+    const initialBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
 
     // Create a unique message to sign
     const message = ethers.solidityPackedKeccak256(
       ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-      [realmId, realmIdVersion, amount, currentSeason, reasonCode1, nonce]
+      [realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce]
     );
 
     const signature = await signer.signMessage(ethers.getBytes(message));
     const {v, r, s} = ethers.Signature.from(signature);
 
-    await mocaPoints.connect(signer).consumeWithRealmIdVRS(realmId, amount, reasonCode1, v, r, s);
+    await mocaPoints.connect(signer)['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](realmId, amount, reasonCode, v, r, s);
 
     // Get the updated balance of the realmId after consumption
-    const updatedBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
     const finalbalance = initialBalance - amount;
 
     // Check that the balance decreased by the consumed amount
@@ -263,9 +288,7 @@ describe('MocaPoints-Test', function () {
 
   it('should consume tokens with parent node', async function () {
     const parentNode = ethers.encodeBytes32String('node');
-    // const preData = ethers.toUtf8Bytes('data');
     const name = 'bishal';
-    // const consumeReasonCode = ethers.encodeBytes32String('reason');
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     await mocaPoints.connect(signer).batchAddConsumeReasonCodes([reasonCode1]);
     const currentSeason = mocaPoints.currentSeason();
@@ -274,15 +297,15 @@ describe('MocaPoints-Test', function () {
     const amount = 10;
 
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
-    // Get the initial balance of the realmId
-    await mocaPoints.connect(depositor).deposit(currentSeason, realmId, realmIdVersion, amount, reasonCode1);
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode1);
 
-    const initialBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
-    // Perform the consumption using the consumeWithParentnode function
-    await mocaPoints.connect(signer).consumeWithParentnode(parentNode, name, amount, reasonCode1);
+    const initialBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
+    await mocaPoints.connect(signer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, reasonCode1);
 
     // Get the updated balance of the realmId after consumption
-    const updatedBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
     const finalbalance = initialBalance - amount;
 
     // Check that the balance decreased by the consumed amount
@@ -300,17 +323,16 @@ describe('MocaPoints-Test', function () {
     const amount = 10;
     await mocaPoints.connect(signer).grantRole(DEPOSITOR_ROLE, depositor);
 
-    // Get the realmId for the registered name and parent node
-    await mocaPoints.connect(depositor).deposit(currentSeason, realmId, realmIdVersion, amount, reasonCode1);
-
+    await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode1);
     // Get the initial balance of the realmId
-    const initialBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+    const initialBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
 
-    // Perform the consumption using the consumeWithRealmId function
-    await mocaPoints.connect(signer).consumeWithRealmId(realmId, amount, reasonCode1);
+    await mocaPoints.connect(signer)['consume(uint256,uint256,bytes32)'](realmId, amount, reasonCode1);
 
     // Get the updated balance of the realmId after consumption
-    const updatedBalance = Number(await mocaPoints.balanceOfWithRealmId(realmId));
+    const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
     const finalbalance = initialBalance - amount;
 
     // Check that the balance decreased by the consumed amount
