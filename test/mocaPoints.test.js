@@ -4,6 +4,16 @@ const {expect} = require('chai');
 const {BigNumber} = require('ethers');
 const {ethers, upgrades} = require('hardhat');
 require('dotenv').config();
+// const Contract_deploy = require('@animoca/ethereum-migrations/src/templates/Contract/deploy');
+
+// module.exports = Contract_deploy('ORBNFT', {
+//   contract: 'ORBNFT',
+//   args: [
+//     {name: 'filterRegistry', value: getNamedAccount('filterRegistry')},
+//     {name: 'name_', value: 'Anichess ORB'},
+//     {name: 'symbol_', value: 'ORB'},
+//   ],
+// });
 
 describe('MocaPoints-Test', function () {
   let depositor, recipient, signer, other, DEPOSITOR_ROLE, PAUSER_ROLE, UPGRADER_ROLE;
@@ -13,12 +23,11 @@ describe('MocaPoints-Test', function () {
   beforeEach(async function () {
     [depositor, payoutWallet, recipient, signer, owner, other] = await ethers.getSigners();
 
-    const RealmId = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await upgrades.deployProxy(RealmId, ['TOKEN', 'TKN', signer.address], {initializer: 'initialize'});
-    const mockRealmContractAddress = mockRealmContract.target;
+    const realmIdContract = await ethers.getContractFactory('MockRealmId');
+    mockRealmContract = await realmIdContract.deploy();
 
     const MocaPoints = await ethers.getContractFactory('MocaPoints');
-    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContractAddress, signer.address], {initializer: 'initialize'});
+    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, signer.address], {initializer: 'initialize'});
     DEPOSITOR_ROLE = await mocaPoints.DEPOSITOR_ROLE();
     PAUSER_ROLE = await mocaPoints.PAUSER_ROLE();
     UPGRADER_ROLE = await mocaPoints.UPGRADER_ROLE();
