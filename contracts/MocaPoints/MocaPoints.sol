@@ -129,14 +129,6 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
     }
 
-    function test(bytes32 season, bytes32 parentNode, string memory name, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public {
-        // Create the realmId using parentNode and name
-        uint256 realmId = realmIdContract.getTokenId(name, parentNode);
-
-        // Call the internal _deposit function to perform the deposit operation
-        deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
-    }
-
     function _getSigner(
         uint256 realmId,
         uint256 realmIdVersion,
