@@ -4,19 +4,9 @@ const {expect} = require('chai');
 const {BigNumber} = require('ethers');
 const {ethers, upgrades} = require('hardhat');
 require('dotenv').config();
-// const Contract_deploy = require('@animoca/ethereum-migrations/src/templates/Contract/deploy');
-
-// module.exports = Contract_deploy('ORBNFT', {
-//   contract: 'ORBNFT',
-//   args: [
-//     {name: 'filterRegistry', value: getNamedAccount('filterRegistry')},
-//     {name: 'name_', value: 'Anichess ORB'},
-//     {name: 'symbol_', value: 'ORB'},
-//   ],
-// });
 
 describe('MocaPoints-Test', function () {
-  let depositor, recipient, signer, other, DEPOSITOR_ROLE, PAUSER_ROLE, UPGRADER_ROLE;
+  let depositor, signer, other, DEPOSITOR_ROLE, UPGRADER_ROLE;
   let mocaPoints;
   let mockRealmContract;
 
@@ -29,7 +19,6 @@ describe('MocaPoints-Test', function () {
     const MocaPoints = await ethers.getContractFactory('MocaPoints');
     mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, signer.address], {initializer: 'initialize'});
     DEPOSITOR_ROLE = await mocaPoints.DEPOSITOR_ROLE();
-    PAUSER_ROLE = await mocaPoints.PAUSER_ROLE();
     UPGRADER_ROLE = await mocaPoints.UPGRADER_ROLE();
   });
 
@@ -403,7 +392,7 @@ describe('MocaPoints-Test', function () {
 
     expect(await mocaPoints.connect(signer)['consume(uint256,uint256,bytes32)'](realmId, amount, consumeReasonCode))
       .to.emit('mocaPoints', 'Consumed')
-      .withArgs(realmId, currentSeason, consumeReasonCode, signer.address, realmIdVersion, amount, signer.address, nonce);
+      .withArgs(realmId, currentSeason, consumeReasonCode, signer.address, realmIdVersion, amount, signer.address);
   });
 
   it('should emit Consumed event when consuming tokens with parentNode, name, amount and reasonCode', async function () {
@@ -423,7 +412,7 @@ describe('MocaPoints-Test', function () {
 
     expect(await mocaPoints.connect(signer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode))
       .to.emit('mocaPoints', 'Consumed')
-      .withArgs(realmId, currentSeason, consumeReasonCode, signer.address, realmIdVersion, amount, signer.address, nonce);
+      .withArgs(realmId, currentSeason, consumeReasonCode, signer.address, realmIdVersion, amount, signer.address);
   });
 
   it('should emit Consumed event when consuming tokens with realmId, amount and reasonCode and verify signature', async function () {
@@ -450,7 +439,7 @@ describe('MocaPoints-Test', function () {
     const {v, r, s} = ethers.Signature.from(signature);
     expect(await mocaPoints.connect(depositor)['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](realmId, amount, consumeReasonCode, v, r, s))
       .to.emit('mocaPoints', 'Consumed')
-      .withArgs(realmId, currentSeason, consumeReasonCode, signer.address, realmIdVersion, amount, signer.address, nonce);
+      .withArgs(realmId, currentSeason, consumeReasonCode, signer.address, realmIdVersion, amount, signer.address);
   });
 
   it('should consume tokens with parent node and verify the signature', async function () {

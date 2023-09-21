@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-// import {RealmId} from "./RealmId.sol";
-
 contract MockRealmId {
-    function burnCounts(uint256) public pure returns (uint256){
+    function burnCounts(uint256) public pure returns (uint256) {
         return 0;
     }
 
