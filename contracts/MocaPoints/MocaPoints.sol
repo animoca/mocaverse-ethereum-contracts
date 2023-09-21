@@ -2,11 +2,17 @@
 pragma solidity ^0.8.9;
 
 import {IRealmId} from "./interface/IRealmId.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {AccessControlStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/AccessControlStorage.sol";
+import {AccessControlBase} from "@animoca/ethereum-contracts/contracts/access/base/AccessControlBase.sol";
+import {ContractOwnershipBase} from "@animoca/ethereum-contracts/contracts/access/base/ContractOwnershipBase.sol";
+import {ContractOwnershipStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/ContractOwnershipStorage.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
+contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, UUPSUpgradeable {
+    using ContractOwnershipStorage for ContractOwnershipStorage.Layout;
+    using AccessControlStorage for AccessControlStorage.Layout;
+
     // Roles
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
@@ -49,26 +55,21 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
         address realmIdOwner
     );
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
     function initialize(address _realmIdContract, address _admin) public initializer {
-        __AccessControl_init();
         __UUPSUpgradeable_init();
+        ContractOwnershipStorage.layout().proxyInit(_admin);
 
         require(address(_realmIdContract) != address(0), "Not a valid Contract Address");
         require(address(_admin) != address(0), "Not a valid Admin Address");
-
-        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         realmIdContract = IRealmId(_realmIdContract);
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
+    function _authorizeUpgrade(address) internal view override {
+        AccessControlStorage.layout().enforceHasRole(UPGRADER_ROLE, _msgSender());
+    }
 
     function setCurrentSeason(bytes32 _season) external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not the admin");
+        ContractOwnershipStorage.layout().enforceIsContractOwner(_msgSender());
         require(!seasons[_season], "Season already set");
         currentSeason = _season;
         seasons[_season] = true;
@@ -76,8 +77,7 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
     }
 
     function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not the admin");
-        // Check if each reason code is unique and does not already exist
+        ContractOwnershipStorage.layout().enforceIsContractOwner(_msgSender());
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
             require(!allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code already exists");
             allowedConsumeReasonCodes[_reasonCodes[i]] = true;
@@ -87,7 +87,7 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
     }
 
     function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not the admin");
+        ContractOwnershipStorage.layout().enforceIsContractOwner(_msgSender());
 
         // Check if each reason code exists and can be removed
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
@@ -100,7 +100,7 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
 
     function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public {
         // Check if the sender has the Depositor role
-        require(hasRole(DEPOSITOR_ROLE, msg.sender), "Not a depositor");
+        AccessControlStorage.layout().enforceHasRole(DEPOSITOR_ROLE, _msgSender());
 
         // increase balance
         balances[season][realmId][realmIdVersion] += amount;
@@ -118,20 +118,6 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
     ) public {
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
         deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
-    }
-
-    function _getSigner(
-        uint256 realmId,
-        uint256 amount,
-        uint256 nonce,
-        bytes32 consumeReasonCode,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) internal view returns (address) {
-        bytes32 _messageHash = _preparePayload(realmId, amount, nonce, consumeReasonCode);
-        bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
-        return ecrecover(messageDigest, v, r, s);
     }
 
     function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner_) internal {
@@ -154,7 +140,9 @@ contract MocaPoints is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
-        address signer = _getSigner(realmId, amount, nonces[realmId], consumeReasonCode, v, r, s);
+        bytes32 _messageHash = _preparePayload(realmId, amount, nonces[realmId], consumeReasonCode);
+        bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
+        address signer = ecrecover(messageDigest, v, r, s);
         address owner_ = realmIdContract.ownerOf(realmId);
         require(signer == owner_, "Signer is not the owner");
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner_);
