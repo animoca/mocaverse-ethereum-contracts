@@ -139,7 +139,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
-        bytes32 _messageHash = preparePayload(realmId, realmIdVersion, amount, consumeReasonCode);
+        bytes32 _messageHash = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], consumeReasonCode);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
         address signer = ecrecover(messageDigest, v, r, s);
         address owner_ = realmIdContract.ownerOf(realmId);
@@ -182,7 +182,19 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
+    function _preparePayload(
+        uint256 realmId,
+        uint256 realmIdVersion,
+        uint256 amount,
+        uint256 nonce,
+        bytes32 reasonCode
+    ) internal view returns (bytes32) {
+        bytes32 payload = keccak256(abi.encodePacked(realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce));
+        return payload;
+    }
+
     function preparePayload(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
-        return keccak256(abi.encodePacked(realmId, realmIdVersion, amount, currentSeason, reasonCode, nonces[realmId]));
+        bytes32 payload = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode);
+        return payload;
     }
 }
