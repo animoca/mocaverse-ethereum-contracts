@@ -614,10 +614,10 @@ describe('MocaPoints-Test', function () {
     expect(payload).to.equal(expectedPayload);
   });
 
-  it('should not allow initialization after deployment', async function () {
+  it('hould not allow re-initialization', async function () {
     const mockRealmIdContract = mockRealmContract.target;
-    const adminAddress = admin.address;
+    const owner_ = owner.address;
     // Attempt to initialize the contract again, it should revert
-    await expect(mocaPoints.initialize(mockRealmIdContract, adminAddress)).to.be.revertedWith('Initializable: contract is already initialized');
+    await expect(mocaPoints.initialize(mockRealmIdContract, owner_)).to.be.revertedWith('Initializable: contract is already initialized');
   });
 });
