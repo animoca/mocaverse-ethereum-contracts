@@ -11,6 +11,6 @@ contract MockRealmId {
     }
 
     function ownerOf(uint256) public pure returns (address) {
-        return address(0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC);
+        return address(0x90F79bf6EB2c4f870365E785982E1f101E93b906);
     }
 }

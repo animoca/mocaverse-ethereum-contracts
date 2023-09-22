@@ -14,8 +14,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     using AccessControlStorage for AccessControlStorage.Layout;
 
     // Roles
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
-    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
     // Seasonal variables
     bytes32 public currentSeason;
@@ -55,21 +55,20 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         address realmIdOwner
     );
 
-    function initialize(address _realmIdContract, address _admin) public initializer {
+    function initialize(address _realmIdContract, address _owner) public initializer {
         __UUPSUpgradeable_init();
-        ContractOwnershipStorage.layout().proxyInit(_admin);
-
-        require(address(_realmIdContract) != address(0), "Not a valid Contract Address");
-        require(address(_admin) != address(0), "Not a valid Admin Address");
+        require(_realmIdContract != address(0), "Not a valid Contract Address");
+        require(_owner != address(0), "Not a valid Admin Address");
+        ContractOwnershipStorage.layout().proxyInit(_owner);
         realmIdContract = IRealmId(_realmIdContract);
     }
 
     function _authorizeUpgrade(address) internal view override {
-        AccessControlStorage.layout().enforceHasRole(UPGRADER_ROLE, _msgSender());
+        AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
     }
 
     function setCurrentSeason(bytes32 _season) external {
-        ContractOwnershipStorage.layout().enforceIsContractOwner(_msgSender());
+        AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         require(!seasons[_season], "Season already set");
         currentSeason = _season;
         seasons[_season] = true;
@@ -77,7 +76,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     }
 
     function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
-        ContractOwnershipStorage.layout().enforceIsContractOwner(_msgSender());
+        AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
             require(!allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code already exists");
             allowedConsumeReasonCodes[_reasonCodes[i]] = true;
@@ -87,7 +86,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     }
 
     function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
-        ContractOwnershipStorage.layout().enforceIsContractOwner(_msgSender());
+        AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
 
         // Check if each reason code exists and can be removed
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
@@ -140,7 +139,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
-        bytes32 _messageHash = _preparePayload(realmId, amount, nonces[realmId], consumeReasonCode);
+        bytes32 _messageHash = preparePayload(realmId, realmIdVersion, amount, consumeReasonCode);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
         address signer = ecrecover(messageDigest, v, r, s);
         address owner_ = realmIdContract.ownerOf(realmId);
@@ -183,13 +182,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
-    function _preparePayload(uint256 realmId, uint256 amount, uint256 nonce, bytes32 reasonCode) internal view returns (bytes32) {
-        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
-        bytes32 payload = keccak256(abi.encodePacked(realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce));
-        return payload;
-    }
-
-    function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
-        return (_preparePayload(realmId, amount, nonces[realmId], reasonCode));
+    function preparePayload(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
+        return keccak256(abi.encodePacked(realmId, realmIdVersion, amount, currentSeason, reasonCode, nonces[realmId]));
     }
 }
