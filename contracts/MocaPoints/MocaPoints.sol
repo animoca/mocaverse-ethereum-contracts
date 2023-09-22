@@ -193,7 +193,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         return payload;
     }
 
-    function preparePayload(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
+    function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
+        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         bytes32 payload = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode);
         return payload;
     }

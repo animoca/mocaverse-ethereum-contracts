@@ -539,7 +539,7 @@ describe('MocaPoints-Test', function () {
     const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
     const nonce = await mocaPoints.nonces(realmId);
 
-    const payload = await mocaPoints.preparePayload(realmId, realmIdVersion, amount, reasonCode);
+    const payload = await mocaPoints.preparePayload(realmId, amount, reasonCode);
 
     const expectedPayload = ethers.solidityPackedKeccak256(
       ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
