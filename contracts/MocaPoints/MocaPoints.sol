@@ -55,10 +55,6 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         address realmIdOwner
     );
 
-    event Updated1(bytes32 _season);
-    event Updated2(address _addr);
-    event Updated3(uint256 val);
-
     function initialize(address _realmIdContract, address _owner) public initializer {
         __UUPSUpgradeable_init();
         require(_realmIdContract != address(0), "Not a valid Contract Address");
@@ -69,18 +65,6 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
 
     function _authorizeUpgrade(address) internal view override {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
-    }
-
-    function Update1(bytes32 _season) public {
-        emit Updated1(_season);
-    }
-
-    function update2(address _addr) public {
-        emit Updated2(_addr);
-    }
-
-    function Update3(uint256 val) public {
-        emit Updated3(val);
     }
 
     function setCurrentSeason(bytes32 _season) external virtual {
