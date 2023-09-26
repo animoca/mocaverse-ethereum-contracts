@@ -23,7 +23,6 @@ describe('MocaPoints-Test', function () {
   it('should set current season', async function () {
     const newSeason = ethers.encodeBytes32String('Season1');
     await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    // expect(await mocaPoints.connect(admin).currentSeason()).to.not.equal(newSeason);
     await mocaPoints.connect(admin).setCurrentSeason(newSeason);
     expect(await mocaPoints.connect(admin).currentSeason()).to.equal(newSeason);
   });
@@ -34,7 +33,7 @@ describe('MocaPoints-Test', function () {
 
     expect(await mocaPoints.connect(admin).setCurrentSeason(newSeason))
       .to.emit(mocaPoints, 'SetCurrentSeason')
-      .withArgs(ethers.encodeBytes32String('SEASON_ID'));
+      .withArgs(newSeason);
   });
 
   it('should prevent setting an existing season', async function () {
@@ -659,7 +658,7 @@ describe('Upgradeability-Test', function () {
 
     expect(await mocaPointsV2.connect(admin).setCurrentSeason(newSeason))
       .to.emit(mocaPointsV2, 'SetCurrentSeason')
-      .withArgs(ethers.encodeBytes32String('SEASON_ID_1'));
+      .withArgs(newSeason);
   });
 
   it('upgradeability test: should revert with non-admin role', async function () {
