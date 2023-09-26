@@ -55,6 +55,10 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         address realmIdOwner
     );
 
+    event Updated1(bytes32 _season);
+    event Updated2(address _addr);
+    event Updated3(uint256 val);
+
     function initialize(address _realmIdContract, address _owner) public initializer {
         __UUPSUpgradeable_init();
         require(_realmIdContract != address(0), "Not a valid Contract Address");
@@ -67,7 +71,19 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
     }
 
-    function setCurrentSeason(bytes32 _season) external {
+    function Update1(bytes32 _season) public {
+        emit Updated1(_season);
+    }
+
+    function update2(address _addr) public {
+        emit Updated2(_addr);
+    }
+
+    function Update3(uint256 val) public {
+        emit Updated3(val);
+    }
+
+    function setCurrentSeason(bytes32 _season) external virtual {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         require(!seasons[_season], "Season already set");
         currentSeason = _season;
@@ -75,7 +91,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         emit SetCurrentSeason(_season);
     }
 
-    function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
+    function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes) public virtual {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
             require(!allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code already exists");
@@ -85,7 +101,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         emit BatchAddedConsumeReasonCode(_reasonCodes);
     }
 
-    function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
+    function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) public virtual {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
 
         // Check if each reason code exists and can be removed
@@ -97,7 +113,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         emit BatchRemovedConsumeReasonCode(_reasonCodes);
     }
 
-    function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public {
+    function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public virtual {
         // Check if the sender has the Depositor role
         AccessControlStorage.layout().enforceHasRole(DEPOSITOR_ROLE, _msgSender());
 
@@ -131,12 +147,20 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         nonces[realmId]++;
     }
 
-    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
+    function consume(
+        bytes32 parentNode,
+        string memory _name,
+        uint256 amount,
+        bytes32 consumeReasonCode,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public virtual {
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         consume(realmId, amount, consumeReasonCode, v, r, s);
     }
 
-    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
+    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public virtual {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         bytes32 _messageHash = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], consumeReasonCode);
@@ -147,12 +171,12 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner_);
     }
 
-    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) public {
+    function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) public virtual {
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         consume(realmId, amount, consumeReasonCode);
     }
 
-    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) public {
+    function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) public virtual {
         address owner_ = realmIdContract.ownerOf(realmId);
         require(msg.sender == owner_, "Sender is not the owner");
 
