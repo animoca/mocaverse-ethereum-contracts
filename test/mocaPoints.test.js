@@ -1,9 +1,6 @@
 /* eslint-disable mocha/no-identical-title */
 const {expect} = require('chai');
-require('chai').use(require('chai-as-promised'));
-// const {BigNumber} = require('ethers');
 const {ethers, upgrades} = require('hardhat');
-// require('dotenv').config();
 
 describe('MocaPoints-Test', function () {
   const ADMIN_ROLE = '0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775';

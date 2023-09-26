@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-// import {AccessControlBase} from "@animoca/ethereum-contracts/contracts/access/base/AccessControlBase.sol";
-// import {ContractOwnershipBase} from "@animoca/ethereum-contracts/contracts/access/base/ContractOwnershipBase.sol";
-// import {ContractOwnershipStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/ContractOwnershipStorage.sol";
 import {AccessControlStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/AccessControlStorage.sol";
 import {MocaPoints} from "./MocaPoints.sol";
 
 contract MocaPointsV2 is MocaPoints {
     using AccessControlStorage for AccessControlStorage.Layout;
-
-    event UpgradeTestValueSet(uint256 value);
 
     function setCurrentSeason(bytes32 _season) external override {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
