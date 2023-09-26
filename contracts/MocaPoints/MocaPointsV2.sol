@@ -8,11 +8,6 @@ import {AccessControlStorage} from "@animoca/ethereum-contracts/contracts/access
 import {MocaPoints} from "./MocaPoints.sol";
 
 contract MocaPointsV2 is MocaPoints {
-    uint256 public a;
-    uint256 public b;
-    uint256 public upgradeTestValue;
-
-    // using ContractOwnershipStorage for ContractOwnershipStorage.Layout;
     using AccessControlStorage for AccessControlStorage.Layout;
 
     event UpgradeTestValueSet(uint256 value);
