@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 /* eslint-disable mocha/no-identical-title */
 const {expect} = require('chai');
 const {ethers, upgrades} = require('hardhat');
@@ -7,7 +8,7 @@ describe('MocaPoints-Test', function () {
   const DEPOSITOR_ROLE = '0x8f4f2da22e8ac8f11e15f9fc141cddbb5deea8800186560abb6e68c5496619a9';
 
   let owner, admin, depositor, other;
-  let mocaPoints, MocaPointsV2, mocaPointsV2;
+  let mocaPoints;
   let mockRealmContract;
 
   beforeEach(async function () {
@@ -31,9 +32,12 @@ describe('MocaPoints-Test', function () {
     const newSeason = ethers.encodeBytes32String('SEASON_ID_1');
     await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
 
-    expect(await mocaPoints.connect(admin).setCurrentSeason(newSeason))
-      .to.emit(mocaPoints, 'SetCurrentSeason')
-      .withArgs(newSeason);
+    const tx = await mocaPoints.connect(admin).setCurrentSeason(newSeason);
+    const receipt = await tx.wait();
+    // console.log('receipt: ', receipt);
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('SetCurrentSeason');
+    expect(args).to.deep.equal([newSeason]);
   });
 
   it('should prevent setting an existing season', async function () {
@@ -59,10 +63,17 @@ describe('MocaPoints-Test', function () {
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
     await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
 
-    // Call batchAddConsumeReasonCodes and check if it emits the event
-    expect(await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]))
-      .to.emit(mocaPoints, 'BatchAddedConsumeReasonCode')
-      .withArgs([reasonCode1, reasonCode2]);
+    const tx = await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
+    const receipt = await tx.wait();
+
+    // Check if the reason codes were added successfully
+    expect(await mocaPoints.connect(admin).allowedConsumeReasonCodes(reasonCode1)).to.equal(true);
+    expect(await mocaPoints.connect(admin).allowedConsumeReasonCodes(reasonCode2)).to.equal(true);
+
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('BatchAddedConsumeReasonCode');
+    const actualReasonCodes = args.reasonCodes.flat();
+    expect(actualReasonCodes).to.deep.equal([reasonCode1, reasonCode2]);
   });
 
   it('should revert on adding exixting ReasonCodes', async function () {
@@ -90,13 +101,12 @@ describe('MocaPoints-Test', function () {
     await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
 
-    // Check if the reason codes were added successfully
-    expect(await mocaPoints.connect(admin).allowedConsumeReasonCodes(reasonCode1)).to.equal(true);
-    expect(await mocaPoints.connect(admin).allowedConsumeReasonCodes(reasonCode2)).to.equal(true);
-
-    expect(await mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2]))
-      .to.emit(mocaPoints, 'BatchRemovedConsumeReasonCode')
-      .withArgs(reasonCode1, reasonCode2);
+    const tx = await mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2]);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('BatchRemovedConsumeReasonCode');
+    const actualReasonCodes = args.reasonCodes;
+    expect(actualReasonCodes).to.deep.equal([reasonCode1, reasonCode2]);
   });
 
   it('should deposit tokens and update balances correctly with deposit function for parentNode and name', async function () {
@@ -131,16 +141,16 @@ describe('MocaPoints-Test', function () {
     const name = 'xyz';
     const amount = 100;
     const realmId = await mockRealmContract['getTokenId(string, bytes32)'](name, parentNode);
-    const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
+    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
     await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
 
-    expect(
-      await mocaPoints
-        .connect(depositor)
-        ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, realmIdVersion, amount, reasonCode)
-    )
-      .to.emit(mocaPoints, 'Deposited')
-      .withArgs(depositor.address, season, season, realmId, realmIdVersion, 2);
+    const tx = await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, realmIdVersion, amount, reasonCode);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('Deposited');
+    expect(args).to.deep.equal([depositor.address, season, reasonCode, realmId, realmIdVersion, amount]);
   });
 
   it('should deposit tokens and update balances correctly with deposit for season and realmId', async function () {
@@ -171,11 +181,13 @@ describe('MocaPoints-Test', function () {
     const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
     await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
 
-    expect(
-      await mocaPoints.connect(depositor)['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, realmId, realmIdVersion, amount, reasonCode)
-    )
-      .to.emit(mocaPoints, 'Deposited')
-      .withArgs(depositor.address, season, reasonCode, realmId, realmIdVersion, amount);
+    const tx = await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, realmId, realmIdVersion, amount, reasonCode);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('Deposited');
+    expect(args).to.deep.equal([depositor.address, season, reasonCode, realmId, realmIdVersion, amount]);
   });
 
   it('should consume tokens with parent node and verify the signature', async function () {
@@ -248,13 +260,13 @@ describe('MocaPoints-Test', function () {
     const signature = await consumer.signMessage(ethers.getBytes(message));
     const {v, r, s} = ethers.Signature.from(signature);
 
-    expect(
-      await mocaPoints
-        .connect(consumer)
-        ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, consumeReasonCode, v, r, s)
-    )
-      .to.emit('mocaPoints', 'Consumed')
-      .withArgs(realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address);
+    const tx = await mocaPoints
+      .connect(consumer)
+      ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, consumeReasonCode, v, r, s);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('Consumed');
+    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 
   it('should consume tokens with realmId and verify the signature', async function () {
@@ -320,9 +332,14 @@ describe('MocaPoints-Test', function () {
     //   ethers.getBytes(ethers.solidityPackedKeccak256(['string', 'bytes32'], ['custom-prefix-MocaPoints', message]))
     // );
     const {v, r, s} = ethers.Signature.from(signature);
-    expect(await mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](realmId, amount, consumeReasonCode, v, r, s))
-      .to.emit('mocaPoints', 'Consumed')
-      .withArgs(realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address);
+
+    const tx = await mocaPoints
+      .connect(consumer)
+      ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](realmId, amount, consumeReasonCode, v, r, s);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('Consumed');
+    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 
   it('should consume tokens with parent node', async function () {
@@ -358,18 +375,20 @@ describe('MocaPoints-Test', function () {
     const consumeReasonCode = ethers.encodeBytes32String('Reason1');
     await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
-    const currentSeason = mocaPoints.currentSeason();
+    const currentSeason = await mocaPoints.currentSeason();
     const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
+    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
     const amount = 10;
     await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
     await mocaPoints
       .connect(depositor)
       ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, consumeReasonCode);
 
-    expect(await mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode))
-      .to.emit('mocaPoints', 'Consumed')
-      .withArgs(realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address);
+    const tx = await mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('Consumed');
+    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 
   it('should consume tokens with realmId', async function () {
@@ -406,18 +425,20 @@ describe('MocaPoints-Test', function () {
     const consumeReasonCode = ethers.encodeBytes32String('Reason1');
     await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
-    const currentSeason = mocaPoints.currentSeason();
+    const currentSeason = await mocaPoints.currentSeason();
     const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
+    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
     const amount = 10;
     await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
     await mocaPoints
       .connect(depositor)
       ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, consumeReasonCode);
 
-    expect(await mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](realmId, amount, consumeReasonCode))
-      .to.emit('mocaPoints', 'Consumed')
-      .withArgs(realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address);
+    const tx = await mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](realmId, amount, consumeReasonCode);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('Consumed');
+    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 
   it('should not allow a non-owner to consume tokens with realmId and verify the signature', async function () {
@@ -655,10 +676,14 @@ describe('Upgradeability-Test', function () {
   it('Should emit SetCurrentSeason event', async function () {
     const newSeason = ethers.encodeBytes32String('SEASON_ID_1');
     await mocaPointsV2.connect(owner).grantRole(ADMIN_ROLE, admin);
+    // console.log('hashed current season: ', ethers.solidityPackedKeccak256(['bytes32'], [newSeason]));
 
-    expect(await mocaPointsV2.connect(admin).setCurrentSeason(newSeason))
-      .to.emit(mocaPointsV2, 'SetCurrentSeason')
-      .withArgs(newSeason);
+    const tx = await mocaPointsV2.connect(admin).setCurrentSeason(newSeason);
+    // console.log('current season from the contract: ', await mocaPointsV2.currentSeason());
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('SetCurrentSeason');
+    expect(args).to.deep.equal([newSeason]);
   });
 
   it('upgradeability test: should revert with non-admin role', async function () {
@@ -678,11 +703,19 @@ describe('Upgradeability-Test', function () {
   it('Should emit BatchAddConsumeReasonCode event', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
-    await mocaPointsV2.connect(owner).grantRole(ADMIN_ROLE, admin);
+    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
 
-    expect(await mocaPointsV2.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]))
-      .to.emit(mocaPoints, 'BatchAddedConsumeReasonCode')
-      .withArgs([reasonCode1, reasonCode2]);
+    const tx = await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
+    const receipt = await tx.wait();
+
+    // Check if the reason codes were added successfully
+    expect(await mocaPoints.connect(admin).allowedConsumeReasonCodes(reasonCode1)).to.equal(true);
+    expect(await mocaPoints.connect(admin).allowedConsumeReasonCodes(reasonCode2)).to.equal(true);
+
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('BatchAddedConsumeReasonCode');
+    const actualReasonCodes = args.reasonCodes.flat();
+    expect(actualReasonCodes).to.deep.equal([reasonCode1, reasonCode2]);
   });
 
   it('should deposit tokens and update balances correctly with deposit for season and realmId', async function () {
@@ -713,11 +746,14 @@ describe('Upgradeability-Test', function () {
     const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
     await mocaPointsV2.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
 
-    expect(
-      await mocaPointsV2.connect(depositor)['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, realmId, realmIdVersion, amount, reasonCode)
-    )
-      .to.emit(mocaPointsV2, 'Deposited')
-      .withArgs(depositor.address, season, reasonCode, realmId, realmIdVersion, amount);
+    const tx = await mocaPoints
+      .connect(depositor)
+      ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, realmId, realmIdVersion, amount, reasonCode);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    // console.log('deposit 2 receipt: ', eventName, args);
+    expect(eventName).to.equal('Deposited');
+    expect(args).to.deep.equal([depositor.address, season, reasonCode, realmId, realmIdVersion, amount]);
   });
 
   it('should consume tokens with parent node', async function () {
@@ -751,17 +787,20 @@ describe('Upgradeability-Test', function () {
     const consumeReasonCode = ethers.encodeBytes32String('Reason1');
     await mocaPointsV2.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPointsV2.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
-    const currentSeason = mocaPointsV2.currentSeason();
+    const currentSeason = await mocaPointsV2.currentSeason();
     const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
+    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
     const amount = 10;
     await mocaPointsV2.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
     await mocaPointsV2
       .connect(depositor)
       ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, consumeReasonCode);
 
-    expect(await mocaPointsV2.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode))
-      .to.emit('mocaPoints', 'Consumed')
-      .withArgs(realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address);
+    const tx = await mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode);
+    const receipt = await tx.wait();
+    const {eventName, args} = receipt.logs[0];
+    expect(eventName).to.equal('Consumed');
+    // console.log('=======>', receipt.logs[0]);
+    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 });

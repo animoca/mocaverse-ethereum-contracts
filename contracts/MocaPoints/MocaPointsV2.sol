@@ -12,5 +12,6 @@ contract MocaPointsV2 is MocaPoints {
         require(!seasons[_season], "Season already set");
         currentSeason = keccak256(abi.encodePacked(_season));
         seasons[_season] = true;
+        emit SetCurrentSeason(_season);
     }
 }
