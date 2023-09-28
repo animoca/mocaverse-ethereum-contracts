@@ -55,6 +55,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         address realmIdOwner
     );
 
+    // Initializes the contract with the provided `_realmIdContract` address and sets the initial owner to `_owner`.
+    // Ensures that `_realmIdContract` and `_owner` are valid addresses and not equal to ZeroAddress.
     function initialize(address _realmIdContract, address _owner) public initializer {
         __UUPSUpgradeable_init();
         require(_realmIdContract != address(0), "Not a valid Contract Address");
@@ -63,10 +65,15 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         realmIdContract = IRealmId(_realmIdContract);
     }
 
+    // Checks whether the sender is authorized to upgrade the contract.
+    // Only the contract owner is allowed to authorize upgrades.
     function _authorizeUpgrade(address) internal view override {
         ContractOwnershipStorage.layout().enforceIsContractOwner(_msgSender());
     }
 
+    //Revert if sender does not have Admin role
+    //Revert if the given season already exists
+    //Emits a {SetCurrentSeason} event if the new season is different from the old season
     function setCurrentSeason(bytes32 _season) external {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         require(!seasons[_season], "Season already set");
@@ -75,6 +82,10 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         emit SetCurrentSeason(_season);
     }
 
+    // Reverts if the sender does not have the Admin role.
+    // Check array lengths of reasonCodes
+    // Reverts if any of the reason codes already exists.
+    // Emits a {BatchAddedConsumeReasonCode} event if all the reason codes are set to the consume reason code mapping.
     function batchAddConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         require(_reasonCodes.length > 0, "Empty Reason codes array");
@@ -82,32 +93,36 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
             require(!allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code already exists");
             allowedConsumeReasonCodes[_reasonCodes[i]] = true;
         }
-
         emit BatchAddedConsumeReasonCode(_reasonCodes);
     }
 
+    // Reverts if the sender does not have the Admin role.
+    // Check array lengths of reasonCodes
+    // Reverts if any of the reason codes do not exist.
+    // Emits a {BatchRemovedConsumeReasonCode} event if all the given reason codes can be set to false.
     function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         require(_reasonCodes.length > 0, "Empty Reason codes array ");
-        // Check if each reason code exists and can be removed
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
             require(allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code does not exist");
             delete allowedConsumeReasonCodes[_reasonCodes[i]];
         }
-
         emit BatchRemovedConsumeReasonCode(_reasonCodes);
     }
 
+    // Reverts if the sender does not have Depositor role
+    // increase balance
+    // Emits a {Deposited} event with sender set to msg.sender
     function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public {
-        // Check if the sender has the Depositor role
         AccessControlStorage.layout().enforceHasRole(DEPOSITOR_ROLE, _msgSender());
 
-        // increase balance
         balances[season][realmId][realmIdVersion] += amount;
-
         emit Deposited(_msgSender(), season, depositReasonCode, realmId, realmIdVersion, amount);
     }
 
+    // Reverts if the sender does not have Depositor role
+    // increase balance
+    // Emits a {Deposited} event with sender set to msg.sender
     function deposit(
         bytes32 season,
         bytes32 parentNode,
@@ -132,11 +147,21 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         nonces[realmId]++;
     }
 
+    // Reverts if the signature format is not correct (realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce)
+    // Reverts if the signer is not the realmId owner
+    // Reverts if the signer does not have enough balance
+    // Reverts if the consumeReasonCodes does not exist or the value is false in the mapping
+    // Emits a {Consumed} event
     function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         consume(realmId, amount, consumeReasonCode, v, r, s);
     }
 
+    // Reverts if the signature format is not correct (realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce)
+    // Reverts if the signer is not the realmId owner
+    // Reverts if the signer does not have enough balance
+    // Reverts if the consumeReasonCodes do not exist or the value is false in the mapping
+    // Emits a {Consumed} event
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         // get realmIdVersion from the realmId contract
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
@@ -148,11 +173,19 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner_);
     }
 
+    // Reverts if the sender is not the owner of the realmId
+    // Reverts if the sender does not have enough balance
+    // Reverts if the consumeReasonCodes do not exist or the value is false in the mapping
+    // Emits a {Consumed} event
     function consume(bytes32 parentNode, string memory _name, uint256 amount, bytes32 consumeReasonCode) public {
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         consume(realmId, amount, consumeReasonCode);
     }
 
+    // Reverts if the sender is not the owner of the realmId
+    // Reverts if the sender does not have enough balance
+    // Reverts if the consumeReasonCodes do not exist or the value is false in the mapping
+    // Emits a {Consumed} event
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) public {
         address owner_ = realmIdContract.ownerOf(realmId);
         require(_msgSender() == owner_, "Sender is not the owner");
@@ -161,28 +194,33 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, _msgSender());
     }
 
+    // Get the balance of a given realmId for a specific season.
     function balanceOf(bytes32 season, uint256 realmId) external view returns (uint256) {
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         return balances[season][realmId][realmIdVersion];
     }
 
+    // Get the balance of a given realmId for a specific season.
     function balanceOf(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         return balances[season][realmId][realmIdVersion];
     }
 
+    // Get the balance of a given realmId for the current season.
     function balanceOf(uint256 realmId) external view returns (uint256) {
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
+    // Get the balance of a given realmId for the current season.
     function balanceOf(bytes32 parentNode, string memory _name) external view returns (uint256) {
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
+    //Return the payload which is generated using the arguments, current season and the realmId version
     function _preparePayload(
         uint256 realmId,
         uint256 realmIdVersion,
@@ -194,6 +232,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         return payload;
     }
 
+    //Return the payload which is generated using the arguments, current nonce, current season and the realmId version
     function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         bytes32 payload = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode);

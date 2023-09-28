@@ -2,21 +2,54 @@
 /* eslint-disable mocha/no-identical-title */
 const {expect} = require('chai');
 const {ethers, upgrades} = require('hardhat');
+const {loadFixture} = require('@animoca/ethereum-contract-helpers/src/test/fixtures');
+
+let owner, admin, depositor, consumer, other;
+let mocaPoints, mocaPointsV2, MocaPointsUpgrade;
+let mockRealmContract, commonVariables;
+let MocaPoints;
+
+const setupMocaPointsAndRolesAndCommonVariables = async function () {
+  let owner, admin, depositor;
+
+  // Common variables used in contract initialization, deposit, consume and other tests below
+  const reasonCode = ethers.encodeBytes32String('reason');
+  const season = ethers.encodeBytes32String('season');
+  const parentNode = ethers.encodeBytes32String('parentNode');
+  const name = 'xyz';
+  const amount = 100;
+  [owner, admin, depositor] = await ethers.getSigners();
+  const ADMIN_ROLE = '0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775';
+  const DEPOSITOR_ROLE = '0x8f4f2da22e8ac8f11e15f9fc141cddbb5deea8800186560abb6e68c5496619a9';
+  // Deploy the MockRealmId contract
+  const realmIdContract = await ethers.getContractFactory('MockRealmId');
+  const mockRealmContract = await realmIdContract.deploy();
+  const realmId = await mockRealmContract.getTokenId(name, parentNode);
+  const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
+  // Deploy the MocaPoints contract
+  const MocaPoints = await ethers.getContractFactory('MocaPoints');
+  const mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {
+    initializer: 'initialize',
+    kind: 'uups',
+  });
+
+  // Grant roles to accounts
+  await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin.address);
+  await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor.address);
+
+  return {mocaPoints, mockRealmContract, MocaPoints, reasonCode, season, parentNode, name, amount, realmId, realmIdVersion};
+};
 
 describe('Contract Initialization Test', function () {
-  let owner;
-  let mockRealmContract;
-
   beforeEach(async function () {
-    [owner] = await ethers.getSigners();
-
-    const realmIdContract = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await realmIdContract.deploy();
+    [owner, admin, depositor] = await ethers.getSigners();
+    const {mocaPoints: mp, mockRealmContract: mrc, MocaPoints: MP} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    mockRealmContract = mrc;
+    MocaPoints = MP;
   });
 
   it('should revert when setting the realmIdContract address to zero address', async function () {
     const realmIdContractAddress = ethers.ZeroAddress;
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
     await expect(
       upgrades.deployProxy(MocaPoints, [realmIdContractAddress, owner.address], {initializer: 'initialize', kind: 'uups'})
     ).to.be.revertedWith('Not a valid Contract Address');
@@ -24,50 +57,35 @@ describe('Contract Initialization Test', function () {
 
   it('should revert when setting the owner address to zero address', async function () {
     const ownerAddress = ethers.ZeroAddress;
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
     await expect(
       upgrades.deployProxy(MocaPoints, [mockRealmContract.target, ownerAddress], {initializer: 'initialize', kind: 'uups'})
     ).to.be.revertedWith('Not a valid Admin Address');
   });
 
   it('should correctly intialize the contract with a realmIdContract address and valid owner address', async function () {
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
-
     await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
   });
 });
 
 describe('Season Related Test', function () {
-  const ADMIN_ROLE = '0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775';
-
-  let owner, admin;
-  let mocaPoints;
-  let mockRealmContract;
-
   beforeEach(async function () {
-    [owner, admin, other] = await ethers.getSigners();
-
-    const realmIdContract = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await realmIdContract.deploy();
-
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
-    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
+    [other] = await ethers.getSigners();
+    const {mocaPoints: mp, mockRealmContract: mrc} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    mocaPoints = mp;
+    mockRealmContract = mrc;
   });
 
   it('should set current season', async function () {
     const newSeason = ethers.encodeBytes32String('Season1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).setCurrentSeason(newSeason);
     expect(await mocaPoints.connect(admin).currentSeason()).to.equal(newSeason);
   });
 
   it('Should emit SetCurrentSeason event', async function () {
     const newSeason = ethers.encodeBytes32String('SEASON_ID_1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
 
     const tx = await mocaPoints.connect(admin).setCurrentSeason(newSeason);
     const receipt = await tx.wait();
-    // console.log('receipt: ', receipt);
     const {eventName, args} = receipt.logs[0];
     expect(eventName).to.equal('SetCurrentSeason');
     expect(args).to.deep.equal([newSeason]);
@@ -75,7 +93,6 @@ describe('Season Related Test', function () {
 
   it('should prevent setting an existing season', async function () {
     const newSeason = ethers.encodeBytes32String('Season1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).setCurrentSeason(newSeason);
 
     await expect(mocaPoints.connect(admin).setCurrentSeason(newSeason)).to.be.revertedWith('Season already set');
@@ -88,26 +105,16 @@ describe('Season Related Test', function () {
 });
 
 describe('Batch Add and Remove Reason Codes Test', function () {
-  const ADMIN_ROLE = '0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775';
-
-  let owner, admin;
-  let mocaPoints;
-  let mockRealmContract;
-
   beforeEach(async function () {
     [owner, admin, other] = await ethers.getSigners();
 
-    const realmIdContract = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await realmIdContract.deploy();
-
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
-    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
+    const {mocaPoints: mp} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    mocaPoints = mp;
   });
 
   it('should add ReasonCodes', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
 
     expect(await mocaPoints.allowedConsumeReasonCodes(reasonCode1)).to.equal(true);
@@ -117,7 +124,6 @@ describe('Batch Add and Remove Reason Codes Test', function () {
   it('Should emit BatchAddConsumeReasonCode event', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
 
     const tx = await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
     const receipt = await tx.wait();
@@ -141,13 +147,11 @@ describe('Batch Add and Remove Reason Codes Test', function () {
   it('should revert on adding exixting ReasonCodes', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
     await expect(mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1])).to.be.revertedWith('Reason code already exists');
   });
 
   it('should revert when adding an empty array of reason codes', async function () {
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     // Attempt to add an empty array of reason codes
     await expect(mocaPoints.connect(admin).batchAddConsumeReasonCodes([])).to.be.revertedWith('Empty Reason codes array');
   });
@@ -155,7 +159,6 @@ describe('Batch Add and Remove Reason Codes Test', function () {
   it('should remove reason codes correctly', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
 
     await mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2]);
@@ -166,7 +169,6 @@ describe('Batch Add and Remove Reason Codes Test', function () {
   it('Should emit BatchRemovedConsumeReasonCode event', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
 
     const tx = await mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2]);
@@ -180,7 +182,6 @@ describe('Batch Add and Remove Reason Codes Test', function () {
   it('should not allow non admin to remove reason codes correctly', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
 
     await expect(mocaPoints.connect(other).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2])).to.be.reverted;
@@ -190,7 +191,6 @@ describe('Batch Add and Remove Reason Codes Test', function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
     const reasonCode3 = ethers.encodeBytes32String('Reason3');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
 
     await expect(mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode3])).to.be.revertedWith(
@@ -201,7 +201,6 @@ describe('Batch Add and Remove Reason Codes Test', function () {
   it('should revert when removing an empty array of reason codes', async function () {
     const reasonCode1 = ethers.encodeBytes32String('Reason1');
     const reasonCode2 = ethers.encodeBytes32String('Reason2');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
 
     // Attempt to remove an empty array of reason codes
@@ -210,34 +209,16 @@ describe('Batch Add and Remove Reason Codes Test', function () {
 });
 
 describe('Deposit Test', function () {
-  const DEPOSITOR_ROLE = '0x8f4f2da22e8ac8f11e15f9fc141cddbb5deea8800186560abb6e68c5496619a9';
-
-  let owner, depositor, other;
-  let mocaPoints;
-  let mockRealmContract;
-
   beforeEach(async function () {
     [owner, admin, depositor, consumer, other] = await ethers.getSigners();
-
-    const realmIdContract = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await realmIdContract.deploy();
-
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
-    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
+    const {mocaPoints: mp, mockRealmContract: mrc} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    mocaPoints = mp;
+    mockRealmContract = mrc;
   });
 
   it('should deposit tokens and update balances correctly with deposit function for parentNode and name', async function () {
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const season = ethers.encodeBytes32String('season');
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const amount = 100;
-
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    // Call the contract function for the initial balance
+    const {reasonCode, season, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
     const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
 
     await mocaPoints
       .connect(depositor)
@@ -252,14 +233,7 @@ describe('Deposit Test', function () {
   });
 
   it('Should emit Deposited event with parentNode and name', async function () {
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const season = ethers.encodeBytes32String('season');
-    const parentNode = ethers.encodeBytes32String('moca');
-    const name = 'xyz';
-    const amount = 100;
-    const realmId = await mockRealmContract['getTokenId(string, bytes32)'](name, parentNode);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    const {reasonCode, season, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
 
     const tx = await mocaPoints
       .connect(depositor)
@@ -271,14 +245,7 @@ describe('Deposit Test', function () {
   });
 
   it('should not allow someone without a depositor role to deposit tokens with deposit function for parentNode and name', async function () {
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const season = ethers.encodeBytes32String('season');
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const amount = 100;
-
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
+    const {reasonCode, season, parentNode, name, amount, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
 
     await expect(
       mocaPoints
@@ -288,15 +255,9 @@ describe('Deposit Test', function () {
   });
 
   it('should deposit tokens and update balances correctly with deposit for season and realmId', async function () {
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const season = ethers.encodeBytes32String('season');
-    const parentNode = ethers.encodeBytes32String('moca');
-    const name = 'xyz';
-    const amount = 100;
-    const realmId = await mockRealmContract['getTokenId(string, bytes32)'](name, parentNode);
-    const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
+    const {reasonCode, season, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
 
     await mocaPoints.connect(depositor)['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, realmId, realmIdVersion, amount, reasonCode);
     const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
@@ -306,14 +267,7 @@ describe('Deposit Test', function () {
   });
 
   it('Should emit Deposited event with realmId', async function () {
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const season = ethers.encodeBytes32String('season');
-    const parentNode = ethers.encodeBytes32String('moca');
-    const name = 'xyz';
-    const amount = 100;
-    const realmId = await mockRealmContract['getTokenId(string, bytes32)'](name, parentNode);
-    const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    const {reasonCode, season, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
 
     const tx = await mocaPoints
       .connect(depositor)
@@ -325,50 +279,28 @@ describe('Deposit Test', function () {
   });
 
   it('should not allow someone without a depositor role to deposit tokens with deposit for season and realmId', async function () {
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const season = ethers.encodeBytes32String('season');
-    const parentNode = ethers.encodeBytes32String('moca');
-    const name = 'xyz';
-    const amount = 100;
-    const realmId = await mockRealmContract['getTokenId(string, bytes32)'](name, parentNode);
-    const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
+    const {reasonCode, season, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
 
-    await expect(
-      mocaPoints.connect(depositor)['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, realmId, realmIdVersion, amount, reasonCode)
-    ).to.be.reverted;
+    await expect(mocaPoints.connect(other)['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, realmId, realmIdVersion, amount, reasonCode))
+      .to.be.reverted;
   });
 });
+
 describe('Consume Test', function () {
-  const ADMIN_ROLE = '0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775';
-  const DEPOSITOR_ROLE = '0x8f4f2da22e8ac8f11e15f9fc141cddbb5deea8800186560abb6e68c5496619a9';
-
-  let owner, admin, depositor, other;
-  let mocaPoints;
-  let mockRealmContract;
-
   beforeEach(async function () {
     [owner, admin, depositor, consumer, other] = await ethers.getSigners();
 
-    const realmIdContract = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await realmIdContract.deploy();
-
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
-    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
+    const {mocaPoints: mp} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    mocaPoints = mp;
   });
 
   it('should consume tokens with parent node and verify the signature', async function () {
-    const reasonCode = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const currentSeason = await mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const nonce = await mocaPoints.nonces(realmId);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    const amount = 20;
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    // console.log('commonVariables: ', commonVariables);
 
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+    const nonce = await mocaPoints.nonces(realmId);
+    const currentSeason = await mocaPoints.currentSeason();
 
     await mocaPoints
       .connect(depositor)
@@ -400,27 +332,20 @@ describe('Consume Test', function () {
   });
 
   it('should emit Consumed event when consuming tokens with parent node and verify the signature', async function () {
-    const consumeReasonCode = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
 
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const currentSeason = await mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
     const nonce = await mocaPoints.nonces(realmId);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    const amount = 20;
+    const currentSeason = await mocaPoints.currentSeason();
 
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
     await mocaPoints
       .connect(depositor)
-      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, consumeReasonCode);
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
 
     // Create a unique message to sign
     const message = ethers.solidityPackedKeccak256(
       ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-      [realmId, realmIdVersion, amount, currentSeason, consumeReasonCode, nonce]
+      [realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce]
     );
 
     const signature = await consumer.signMessage(ethers.getBytes(message));
@@ -428,26 +353,20 @@ describe('Consume Test', function () {
 
     const tx = await mocaPoints
       .connect(consumer)
-      ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, consumeReasonCode, v, r, s);
+      ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, reasonCode, v, r, s);
     const receipt = await tx.wait();
     const {eventName, args} = receipt.logs[0];
     expect(eventName).to.equal('Consumed');
-    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
+    expect(args).to.deep.equal([realmId, currentSeason, reasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 
   it('should consume tokens with realmId and verify the signature', async function () {
-    const reasonCode = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const currentSeason = await mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const nonce = await mocaPoints.nonces(realmId);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    const amount = 20;
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
 
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+    const currentSeason = await mocaPoints.currentSeason();
+    const nonce = await mocaPoints.nonces(realmId);
+
     await mocaPoints
       .connect(depositor)
       ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
@@ -473,25 +392,20 @@ describe('Consume Test', function () {
   });
 
   it('should emit Consumed event when consuming tokens with realmId, amount and reasonCode and verify signature', async function () {
-    const consumeReasonCode = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
+    const {reasonCode, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     const currentSeason = await mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    const amount = 20;
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    const nonce = await mocaPoints.nonces(realmId);
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+
     await mocaPoints
       .connect(depositor)
-      ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](currentSeason, realmId, realmIdVersion, amount, consumeReasonCode);
+      ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](currentSeason, realmId, realmIdVersion, amount, reasonCode);
 
-    const nonce = await mocaPoints.nonces(realmId);
     // Create a unique message to sign
     const message = ethers.solidityPackedKeccak256(
       ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-      [realmId, realmIdVersion, amount, currentSeason, consumeReasonCode, nonce]
+      [realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce]
     );
     const signature = await consumer.signMessage(ethers.getBytes(message));
     // const signature = new ethers.SigningKey('0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6').sign(
@@ -499,33 +413,25 @@ describe('Consume Test', function () {
     // );
     const {v, r, s} = ethers.Signature.from(signature);
 
-    const tx = await mocaPoints
-      .connect(consumer)
-      ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](realmId, amount, consumeReasonCode, v, r, s);
+    const tx = await mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](realmId, amount, reasonCode, v, r, s);
     const receipt = await tx.wait();
     const {eventName, args} = receipt.logs[0];
     expect(eventName).to.equal('Consumed');
-    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
+    expect(args).to.deep.equal([realmId, currentSeason, reasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 
   it('should consume tokens with parent node', async function () {
-    const parentNode = ethers.encodeBytes32String('node');
-    const name = 'xyz';
-    const reasonCode1 = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1]);
-    const currentSeason = mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
-    const amount = 10;
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
 
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    const currentSeason = mocaPoints.currentSeason();
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+
     await mocaPoints
       .connect(depositor)
-      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode1);
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
 
     const initialBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
-    await mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, reasonCode1);
+    await mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, reasonCode);
 
     // Get the updated balance of the realmId after consumption
     const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
@@ -536,46 +442,34 @@ describe('Consume Test', function () {
   });
 
   it('should emit Consumed event when consuming tokens with parentNode, name, amount and reasonCode', async function () {
-    const name = 'xyz';
-    const parentNode = ethers.encodeBytes32String('node');
-    const consumeReasonCode = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     const currentSeason = await mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    const amount = 10;
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
     await mocaPoints
       .connect(depositor)
-      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, consumeReasonCode);
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
 
-    const tx = await mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode);
+    const tx = await mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, reasonCode);
     const receipt = await tx.wait();
     const {eventName, args} = receipt.logs[0];
     expect(eventName).to.equal('Consumed');
-    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
+    expect(args).to.deep.equal([realmId, currentSeason, reasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 
   it('should consume tokens with realmId', async function () {
-    const name = 'xyz';
-    const parentNode = ethers.encodeBytes32String('node');
-    const reasonCode1 = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1]);
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     const currentSeason = mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
-    const amount = 10;
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
 
     await mocaPoints
       .connect(depositor)
-      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode1);
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
     // Get the initial balance of the realmId
     const initialBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
 
-    await mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](realmId, amount, reasonCode1);
+    await mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](realmId, amount, reasonCode);
 
     // Get the updated balance of the realmId after consumption
     const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](currentSeason, realmId));
@@ -586,38 +480,27 @@ describe('Consume Test', function () {
   });
 
   it('should emit Consumed event when consuming tokens with realmId, amount and reasonCode', async function () {
-    const name = 'xyz';
-    const parentNode = ethers.encodeBytes32String('node');
-    const consumeReasonCode = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     const currentSeason = await mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    const amount = 10;
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
     await mocaPoints
       .connect(depositor)
-      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, consumeReasonCode);
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
 
-    const tx = await mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](realmId, amount, consumeReasonCode);
+    const tx = await mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](realmId, amount, reasonCode);
     const receipt = await tx.wait();
     const {eventName, args} = receipt.logs[0];
     expect(eventName).to.equal('Consumed');
-    expect(args).to.deep.equal([realmId, currentSeason, consumeReasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
+    expect(args).to.deep.equal([realmId, currentSeason, reasonCode, consumer.address, realmIdVersion, amount, consumer.address]);
   });
 
   it('should not allow a non-owner of realmId to consume tokens with realmId and verify the signature', async function () {
-    const reasonCode = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
+    const {reasonCode, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     const currentSeason = await mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
     const nonce = await mocaPoints.nonces(realmId);
-    const realmIdVersion = await mockRealmContract.burnCounts(realmId);
-    const amount = 20;
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
 
     // Create a unique message to sign
     const message = ethers.solidityPackedKeccak256(
@@ -634,53 +517,35 @@ describe('Consume Test', function () {
   });
 
   it('should allow a non-realmId owner to consume tokens with realmId', async function () {
-    const name = 'xyz';
-    const parentNode = ethers.encodeBytes32String('node');
-    const reasonCode1 = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1]);
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     const currentSeason = mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
-    const amount = 10;
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
 
     await mocaPoints
       .connect(depositor)
-      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode1);
+      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
 
-    await expect(mocaPoints.connect(other)['consume(uint256,uint256,bytes32)'](realmId, amount, reasonCode1)).to.be.revertedWith(
+    await expect(mocaPoints.connect(other)['consume(uint256,uint256,bytes32)'](realmId, amount, reasonCode)).to.be.revertedWith(
       'Sender is not the owner'
     );
   });
 
   it('should not allow to consume tokens with insufficient balance', async function () {
-    const name = 'xyz';
-    const parentNode = ethers.encodeBytes32String('node');
-    const reasonCode1 = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
-    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1]);
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const amount = 10;
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    const {reasonCode, amount, realmId} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
 
-    await expect(mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](realmId, amount, reasonCode1)).to.be.revertedWith(
+    await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+    await expect(mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](realmId, amount, reasonCode)).to.be.revertedWith(
       'Insufficient balance'
     );
   });
 
   it('should not allow to consume tokens with invalid consume reason code', async function () {
-    const name = 'xyz';
-    const parentNode = ethers.encodeBytes32String('node');
-    const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
-    const reasonCode = ethers.encodeBytes32String('Reason1');
-    await mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin);
+    const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
     const currentSeason = mocaPoints.currentSeason();
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
-    const amount = 10;
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
+    const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
 
     await mocaPoints
       .connect(depositor)
@@ -693,139 +558,84 @@ describe('Consume Test', function () {
 });
 
 describe('Balance Test', function () {
-  const DEPOSITOR_ROLE = '0x8f4f2da22e8ac8f11e15f9fc141cddbb5deea8800186560abb6e68c5496619a9';
-
-  let owner, depositor;
-  let mocaPoints;
-  let mockRealmContract;
-
   beforeEach(async function () {
-    [owner, depositor] = await ethers.getSigners();
-
-    const realmIdContract = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await realmIdContract.deploy();
-
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
-    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
+    [owner, admin, depositor, consumer, other] = await ethers.getSigners();
+    const {mocaPoints: mp} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    mocaPoints = mp;
   });
 
   it('should return the balance of a realmId for a specific season and realmId', async function () {
-    const season = ethers.encodeBytes32String('season');
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const amount = 100;
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
+    const {reasonCode, season, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
     const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
-    await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId);
-
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
 
     await mocaPoints
       .connect(depositor)
       ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, realmIdVersion, amount, reasonCode);
 
     const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, realmId));
-
-    const expectedBalance = balance + 100;
+    const expectedBalance = balance + amount;
 
     expect(updatedBalance).to.equal(expectedBalance);
   });
 
   it('should return the balance of a realmId for a specific season, parentnode and name', async function () {
-    const season = ethers.encodeBytes32String('season');
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const amount = 100;
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
+    const {reasonCode, season, parentNode, name, amount, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
     const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,bytes32,string)'](season, parentNode, name));
-
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
 
     await mocaPoints
       .connect(depositor)
       ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, realmIdVersion, amount, reasonCode);
 
     const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,bytes32,string)'](season, parentNode, name));
-
-    const expectedBalance = balance + 100;
+    const expectedBalance = balance + amount;
 
     expect(updatedBalance).to.equal(expectedBalance);
   });
 
   it('should return the balance of a realmId for the current season', async function () {
+    const {reasonCode, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
     const currentSeason = mocaPoints.currentSeason();
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const amount = 100;
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
     const balance = Number(await mocaPoints.connect(depositor)['balanceOf(uint256)'](realmId));
-
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
 
     await mocaPoints
       .connect(depositor)
-      ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
+      ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](currentSeason, realmId, realmIdVersion, amount, reasonCode);
     const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(uint256)'](realmId));
-
     const expectedBalance = balance + 100;
 
     expect(updatedBalance).to.equal(expectedBalance);
   });
 
   it('should return the balance of a realmId for the current season with a given parent node and name', async function () {
+    const {reasonCode, parentNode, name, amount, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
     const currentSeason = mocaPoints.currentSeason();
-    const parentNode = ethers.encodeBytes32String('parentNode');
-    const name = 'xyz';
-    const amount = 100;
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const realmIdVersion = mockRealmContract.burnCounts(realmId);
-
     const balance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,string)'](parentNode, name));
 
-    await mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor);
     await mocaPoints
       .connect(depositor)
       ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](currentSeason, parentNode, name, realmIdVersion, amount, reasonCode);
 
     const updatedBalance = Number(await mocaPoints.connect(depositor)['balanceOf(bytes32,string)'](parentNode, name));
-
-    const expectedBalance = balance + 100;
+    const expectedBalance = balance + amount;
 
     expect(updatedBalance).to.equal(expectedBalance);
   });
 });
 
 describe('Additional Test', function () {
-  let owner;
-  let mocaPoints;
-  let mockRealmContract;
-
   beforeEach(async function () {
-    [owner] = await ethers.getSigners();
+    [owner, admin, depositor] = await ethers.getSigners();
 
-    const realmIdContract = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await realmIdContract.deploy();
-
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
-    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
+    const {mocaPoints: mp, mockRealmContract: mrc} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    mocaPoints = mp;
+    mockRealmContract = mrc;
   });
 
   it('should prepare the payload correctly', async function () {
-    const reasonCode = ethers.encodeBytes32String('reason');
-    const parentNode = ethers.encodeBytes32String('moca');
-    const name = 'xyz';
-    const amount = 100;
-    const realmId = await mockRealmContract.getTokenId(name, parentNode);
-    const currentSeason = await mocaPoints.currentSeason();
-    const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
+    const {reasonCode, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+
     const nonce = await mocaPoints.nonces(realmId);
+    const currentSeason = await mocaPoints.currentSeason();
 
     const payload = await mocaPoints.preparePayload(realmId, amount, reasonCode);
 
@@ -846,19 +656,12 @@ describe('Additional Test', function () {
 });
 
 describe('Upgradeability-Test', function () {
-  let owner, other;
-  let mocaPoints, MocaPointsUpgrade, mocaPointsV2;
-  let mockRealmContract;
-
   beforeEach(async function () {
-    [owner, other] = await ethers.getSigners();
+    [owner, admin, depositor, other] = await ethers.getSigners();
 
-    const realmIdContract = await ethers.getContractFactory('MockRealmId');
-    mockRealmContract = await realmIdContract.deploy();
-
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
+    const {mocaPoints: mp} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
+    mocaPoints = mp;
     MocaPointsUpgrade = await ethers.getContractFactory('MocaPointsUpgrade');
-    mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
     mocaPointsV2 = await upgrades.upgradeProxy(mocaPoints.target, MocaPointsUpgrade.connect(owner));
   });
 
