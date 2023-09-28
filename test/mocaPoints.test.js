@@ -296,7 +296,6 @@ describe('Consume Test', function () {
 
   it('should consume tokens with parent node and verify the signature', async function () {
     const {reasonCode, parentNode, name, amount, realmId, realmIdVersion} = await loadFixture(setupMocaPointsAndRolesAndCommonVariables);
-    // console.log('commonVariables: ', commonVariables);
 
     await mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
     const nonce = await mocaPoints.nonces(realmId);
