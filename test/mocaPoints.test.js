@@ -647,7 +647,7 @@ describe('Additional Test', function () {
     expect(payload).to.equal(expectedPayload);
   });
 
-  it('should not allow re-initialization', async function () {
+  it('should not allow re-initialization of contract', async function () {
     const mockRealmIdContract = mockRealmContract.target;
     const owner_ = owner.address;
     // Attempt to initialize the contract again, it should revert
