@@ -4,6 +4,8 @@ pragma solidity ^0.8.9;
 import {MocaPoints} from "../../MocaPoints.sol";
 
 contract MocaPointsUpgrade is MocaPoints {
+    function initializeV2() public reinitializer(2) {}
+
     uint256 public val;
 
     event ValueSet(uint256 newValue);
