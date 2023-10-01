@@ -687,4 +687,10 @@ describe('Upgradeability-Test', function () {
     expect(eventName).to.equal('ValueSet');
     expect(args).to.deep.equal([val]);
   });
+
+  it('should allow re-initialization of contract for upgradeability', async function () {
+    // Attempt to initialize the contract
+    await mocaPointsV2.initializeV2();
+    await expect(mocaPointsV2.initializeV2()).to.be.reverted;
+  });
 });
