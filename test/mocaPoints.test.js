@@ -28,7 +28,7 @@ const setupMocaPointsAndRolesAndCommonVariables = async function () {
   const realmIdVersion = Number(await mockRealmContract.burnCounts(realmId));
   // Deploy the MocaPoints contract
   const MocaPoints = await ethers.getContractFactory('MocaPoints');
-  const mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {
+  const mocaPoints = await upgrades.deployProxy(MocaPoints, [mockRealmContract.target], {
     initializer: 'initialize',
     kind: 'uups',
   });
@@ -50,20 +50,13 @@ describe('Contract Initialization Test', function () {
 
   it('should revert when setting the realmIdContract address to zero address', async function () {
     const realmIdContractAddress = ethers.ZeroAddress;
-    await expect(
-      upgrades.deployProxy(MocaPoints, [realmIdContractAddress, owner.address], {initializer: 'initialize', kind: 'uups'})
-    ).to.be.revertedWith('Not a valid Contract Address');
+    await expect(upgrades.deployProxy(MocaPoints, [realmIdContractAddress], {initializer: 'initialize', kind: 'uups'})).to.be.revertedWith(
+      'Not a valid Contract Address'
+    );
   });
 
-  it('should revert when setting the owner address to zero address', async function () {
-    const ownerAddress = ethers.ZeroAddress;
-    await expect(
-      upgrades.deployProxy(MocaPoints, [mockRealmContract.target, ownerAddress], {initializer: 'initialize', kind: 'uups'})
-    ).to.be.revertedWith('Not a valid Admin Address');
-  });
-
-  it('should correctly intialize the contract with a realmIdContract address and valid owner address', async function () {
-    await upgrades.deployProxy(MocaPoints, [mockRealmContract.target, owner.address], {initializer: 'initialize', kind: 'uups'});
+  it('should correctly intialize the contract with a realmIdContract address', async function () {
+    await upgrades.deployProxy(MocaPoints, [mockRealmContract.target], {initializer: 'initialize', kind: 'uups'});
   });
 });
 
@@ -648,9 +641,8 @@ describe('Additional Test', function () {
 
   it('should not allow re-initialization of contract', async function () {
     const mockRealmIdContract = mockRealmContract.target;
-    const owner_ = owner.address;
     // Attempt to initialize the contract again, it should revert
-    await expect(mocaPoints.initialize(mockRealmIdContract, owner_)).to.be.revertedWith('Initializable: contract is already initialized');
+    await expect(mocaPoints.initialize(mockRealmIdContract)).to.be.revertedWith('Initializable: contract is already initialized');
   });
 });
 

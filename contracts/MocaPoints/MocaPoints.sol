@@ -55,13 +55,12 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         address realmIdOwner
     );
 
-    // Initializes the contract with the provided `_realmIdContract` address and sets the initial owner to `_owner`.
-    // Ensures that `_realmIdContract` and `_owner` are valid addresses and not equal to ZeroAddress.
-    function initialize(address _realmIdContract, address _owner) public initializer {
+    // Initializes the contract with the provided `_realmIdContract` address.
+    // Ensures that `_realmIdContract`are valid addresses and not equal to ZeroAddress.
+    function initialize(address _realmIdContract) public initializer {
         __UUPSUpgradeable_init();
         require(_realmIdContract != address(0), "Not a valid Contract Address");
-        require(_owner != address(0), "Not a valid Admin Address");
-        ContractOwnershipStorage.layout().proxyInit(_owner);
+        ContractOwnershipStorage.layout().proxyInit(_msgSender());
         realmIdContract = IRealmId(_realmIdContract);
     }
 
