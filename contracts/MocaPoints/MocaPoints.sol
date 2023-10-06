@@ -294,6 +294,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @dev Reverts if fails to resolve realmId's version.
     /// @param season The season.
     /// @param realmId The realmId.
+    /// @return The balance.
     function balanceOf(bytes32 season, uint256 realmId) external view returns (uint256) {
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         return balances[season][realmId][realmIdVersion];
@@ -307,6 +308,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param season The season.
     /// @param parentNode The parent node of the realmId.
     /// @param _name The name of the realmId.
+    /// @return The balance.
     function balanceOf(bytes32 season, bytes32 parentNode, string memory _name) external view returns (uint256) {
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
@@ -318,6 +320,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @notice Applies to the current season.
     /// @dev Reverts if fails to resolve realmId's version.
     /// @param realmId The realmId.
+    /// @return The balance.
     function balanceOf(uint256 realmId) external view returns (uint256) {
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         return balances[currentSeason][realmId][realmIdVersion];
@@ -331,6 +334,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @dev Reverts if fails to resolve realmId's version.
     /// @param parentNode The parent node of the realmId.
     /// @param _name The name of the realmId.
+    /// @return The balance.
     function balanceOf(bytes32 parentNode, string memory _name) external view returns (uint256) {
         uint256 realmId = realmIdContract.getTokenId(_name, parentNode);
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
@@ -343,6 +347,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param amount The amount.
     /// @param nonce The nonce.
     /// @param reasonCode The reason code.
+    /// @return The payload.
     function _preparePayload(
         uint256 realmId,
         uint256 realmIdVersion,
@@ -359,6 +364,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param realmId The realmId.
     /// @param amount The amount.
     /// @param reasonCode The reason code.
+    /// @return The payload.
     function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         bytes32 payload = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode);
