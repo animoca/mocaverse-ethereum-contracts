@@ -48,7 +48,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param sender The sender of the deposit.
     /// @param season The season of the balance deposited to.
     /// @param reasonCode The reason code of the deposit.
-    /// @param realmId The realmId of the balance deposited to. 
+    /// @param realmId The realmId of the balance deposited to.
     /// @param realmIdVersion The realmId version.
     /// @param amount The amount deposited.
     event Deposited(
@@ -61,7 +61,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     );
 
     /// @notice Emitted when an amount is consumed from a balance.
-    /// @param realmId The realmId of the balance consumed from. 
+    /// @param realmId The realmId of the balance consumed from.
     /// @param season The season of the balance consumed from.
     /// @param reasonCode The reason code of the consumption.
     /// @param operator The sender of the consumption.
