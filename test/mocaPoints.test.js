@@ -8,12 +8,11 @@ describe('MocaPoints Contract', function () {
   let owner, admin, depositor, consumer, other;
 
   const reasonCode = ethers.encodeBytes32String('reason');
-  const season = ethers.encodeBytes32String('season');
   const parentNode = ethers.encodeBytes32String('parentNode');
   const name = 'xyz';
   const amount = 100;
-  const ADMIN_ROLE = '0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775';
-  const DEPOSITOR_ROLE = '0x8f4f2da22e8ac8f11e15f9fc141cddbb5deea8800186560abb6e68c5496619a9';
+  const ADMIN_ROLE = ethers.keccak256(Buffer.from('ADMIN_ROLE'));
+  const DEPOSITOR_ROLE = ethers.keccak256(Buffer.from('DEPOSITOR_ROLE'));
 
   before(async function () {
     [owner, admin, depositor, consumer, other] = await ethers.getSigners();
@@ -180,6 +179,9 @@ describe('MocaPoints Contract', function () {
     let amount = 100;
 
     beforeEach(async function () {
+      await this.mocaPoints.connect(admin).setCurrentSeason(ethers.encodeBytes32String('Season1'));
+      this.currentSeason = await this.mocaPoints.currentSeason();
+      this.depositReasonCode = ethers.encodeBytes32String('depositReason');
       this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
       this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
     });
@@ -188,33 +190,50 @@ describe('MocaPoints Contract', function () {
       await expect(
         this.mocaPoints
           .connect(other)
-          ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, this.realmIdVersion, amount, reasonCode)
+          ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
+            this.currentSeason,
+            parentNode,
+            name,
+            this.realmIdVersion,
+            amount,
+            this.depositReasonCode
+          )
       ).to.be.reverted;
     });
 
     context('when successful', function () {
       beforeEach(async function () {
-        this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](season, parentNode, name));
+        this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
         this.receipt = await this.mocaPoints
           .connect(depositor)
-          ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](season, parentNode, name, this.realmIdVersion, amount, reasonCode);
+          ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
+            this.currentSeason,
+            parentNode,
+            name,
+            this.realmIdVersion,
+            amount,
+            this.depositReasonCode
+          );
       });
 
       it('deposits with parendNode and name', async function () {
-        const balanceAfter = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](season, parentNode, name));
+        const balanceAfter = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
         expect(balanceAfter - this.balanceBefore).to.equal(amount);
       });
 
       it('emits Deposited event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Deposited')
-          .withArgs(depositor.address, season, reasonCode, this.realmId, this.realmIdVersion, amount);
+          .withArgs(depositor.address, this.currentSeason, this.depositReasonCode, this.realmId, this.realmIdVersion, amount);
       });
     });
   });
 
   describe('deposit(bytes32,uint256,uint256,uint256,bytes32)', function () {
     beforeEach(async function () {
+      await this.mocaPoints.connect(admin).setCurrentSeason(ethers.encodeBytes32String('Season1'));
+      this.currentSeason = await this.mocaPoints.currentSeason();
+      this.depositReasonCode = ethers.encodeBytes32String('depositReason');
       this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
       this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
     });
@@ -223,7 +242,7 @@ describe('MocaPoints Contract', function () {
       await expect(
         this.mocaPoints
           .connect(other)
-          ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, this.realmId, this.realmIdVersion, amount, reasonCode)
+          ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](this.currentSeason, this.realmId, this.realmIdVersion, amount, this.depositReasonCode)
       ).to.be.reverted;
     });
 
@@ -231,20 +250,26 @@ describe('MocaPoints Contract', function () {
       let depositAmount = 100;
 
       beforeEach(async function () {
-        this.balanceBefore = Number(await this.mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, this.realmId));
+        this.balanceBefore = Number(await this.mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
         this.receipt = await this.mocaPoints
           .connect(depositor)
-          ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](season, this.realmId, this.realmIdVersion, depositAmount, reasonCode);
+          ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](
+            this.currentSeason,
+            this.realmId,
+            this.realmIdVersion,
+            depositAmount,
+            this.depositReasonCode
+          );
       });
       it('deposits with season and realmId', async function () {
-        this.balanceAfter = Number(await this.mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](season, this.realmId));
+        this.balanceAfter = Number(await this.mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
         expect(this.balanceAfter - this.balanceBefore).to.equal(depositAmount);
       });
 
       it('emits Deposited event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Deposited')
-          .withArgs(depositor.address, season, reasonCode, this.realmId, this.realmIdVersion, depositAmount);
+          .withArgs(depositor.address, this.currentSeason, this.depositReasonCode, this.realmId, this.realmIdVersion, depositAmount);
       });
     });
   });
