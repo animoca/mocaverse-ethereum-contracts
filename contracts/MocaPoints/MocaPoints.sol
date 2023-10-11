@@ -131,7 +131,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param _reasonCodes Array of reason codes to remove.
     function batchRemoveConsumeReasonCodes(bytes32[] memory _reasonCodes) public {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
-        require(_reasonCodes.length > 0, "Empty Reason codes array ");
+        require(_reasonCodes.length > 0, "Empty Reason codes array");
         for (uint256 i = 0; i < _reasonCodes.length; i++) {
             require(allowedConsumeReasonCodes[_reasonCodes[i]], "Reason code does not exist");
             delete allowedConsumeReasonCodes[_reasonCodes[i]];
