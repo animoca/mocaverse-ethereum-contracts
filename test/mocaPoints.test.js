@@ -1,5 +1,3 @@
-/* eslint-disable max-len */
-/* eslint-disable mocha/no-identical-title */
 const {expect} = require('chai');
 const {ethers, upgrades} = require('hardhat');
 const {loadFixture} = require('@animoca/ethereum-contract-helpers/src/test/fixtures');
@@ -7,25 +5,25 @@ const {loadFixture} = require('@animoca/ethereum-contract-helpers/src/test/fixtu
 describe('MocaPoints Contract', function () {
   let owner, admin, depositor, consumer, other;
 
-  const reasonCode = ethers.encodeBytes32String('reason');
+  const amount = 100;
+  const consumeReasonCode = ethers.encodeBytes32String('consumeReason');
   const parentNode = ethers.encodeBytes32String('parentNode');
   const name = 'xyz';
-  const amount = 100;
-  const ADMIN_ROLE = ethers.keccak256(Buffer.from('ADMIN_ROLE'));
-  const DEPOSITOR_ROLE = ethers.keccak256(Buffer.from('DEPOSITOR_ROLE'));
 
   before(async function () {
     [owner, admin, depositor, consumer, other] = await ethers.getSigners();
   });
 
   const fixture = async function () {
-    // Common variables used in contract initialization, deposit, consume and other tests below
     [owner, admin, depositor] = await ethers.getSigners();
 
     // Deploy the MockRealmId contract
     const MockRealmIdContract = await ethers.getContractFactory('MockRealmId');
     this.mockRealmId = await MockRealmIdContract.deploy();
     this.mockRealmIdAddress = this.mockRealmId.target;
+
+    this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
+    this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
 
     // Deploy the MocaPoints contract
     const MocaPoints = await ethers.getContractFactory('MocaPoints');
@@ -34,7 +32,8 @@ describe('MocaPoints Contract', function () {
       kind: 'uups',
     });
 
-    // Grant roles to accounts
+    const ADMIN_ROLE = ethers.keccak256(Buffer.from('ADMIN_ROLE'));
+    const DEPOSITOR_ROLE = ethers.keccak256(Buffer.from('DEPOSITOR_ROLE'));
     await this.mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin.address);
     await this.mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor.address);
   };
@@ -176,14 +175,10 @@ describe('MocaPoints Contract', function () {
   });
 
   describe('deposit(bytes32,bytes32,string,uint256,uint256,bytes32)', function () {
-    let amount = 100;
-
     beforeEach(async function () {
       await this.mocaPoints.connect(admin).setCurrentSeason(ethers.encodeBytes32String('Season1'));
       this.currentSeason = await this.mocaPoints.currentSeason();
       this.depositReasonCode = ethers.encodeBytes32String('depositReason');
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
     });
 
     it('reverts if a non depositor role user trying to deposit', async function () {
@@ -234,8 +229,6 @@ describe('MocaPoints Contract', function () {
       await this.mocaPoints.connect(admin).setCurrentSeason(ethers.encodeBytes32String('Season1'));
       this.currentSeason = await this.mocaPoints.currentSeason();
       this.depositReasonCode = ethers.encodeBytes32String('depositReason');
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
     });
 
     it('reverts if a non a depositor role trying to deposit', async function () {
@@ -247,40 +240,28 @@ describe('MocaPoints Contract', function () {
     });
 
     context('when successful', function () {
-      let depositAmount = 100;
-
       beforeEach(async function () {
         this.balanceBefore = Number(await this.mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
         this.receipt = await this.mocaPoints
           .connect(depositor)
-          ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](
-            this.currentSeason,
-            this.realmId,
-            this.realmIdVersion,
-            depositAmount,
-            this.depositReasonCode
-          );
+          ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](this.currentSeason, this.realmId, this.realmIdVersion, amount, this.depositReasonCode);
       });
       it('deposits with season and realmId', async function () {
         this.balanceAfter = Number(await this.mocaPoints.connect(depositor)['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
-        expect(this.balanceAfter - this.balanceBefore).to.equal(depositAmount);
+        expect(this.balanceAfter - this.balanceBefore).to.equal(amount);
       });
 
       it('emits Deposited event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Deposited')
-          .withArgs(depositor.address, this.currentSeason, this.depositReasonCode, this.realmId, this.realmIdVersion, depositAmount);
+          .withArgs(depositor.address, this.currentSeason, this.depositReasonCode, this.realmId, this.realmIdVersion, amount);
       });
     });
   });
 
   describe('consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)', function () {
-    let amount = 100;
-
     beforeEach(async function () {
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
-      await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+      await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
 
       this.currentSeason = await this.mocaPoints.currentSeason();
       const depositReasonCode = ethers.encodeBytes32String('depositReason');
@@ -298,7 +279,7 @@ describe('MocaPoints Contract', function () {
 
     it('reverts if realmId consumes with a non-exists consume reason code', async function () {
       const nonce = await this.mocaPoints.nonces(this.realmId);
-      const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
+      const invalidconsumereasonCode = ethers.encodeBytes32String('invalidReason');
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
         [this.realmId, this.realmIdVersion, amount, this.currentSeason, invalidconsumereasonCode, nonce]
@@ -318,7 +299,7 @@ describe('MocaPoints Contract', function () {
       const nonce = await this.mocaPoints.nonces(this.realmId);
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, amount, this.currentSeason, reasonCode, nonce]
+        [this.realmId, this.realmIdVersion, amount, this.currentSeason, consumeReasonCode, nonce]
       );
 
       const signature = await other.signMessage(ethers.getBytes(message));
@@ -327,7 +308,7 @@ describe('MocaPoints Contract', function () {
       await expect(
         this.mocaPoints
           .connect(consumer)
-          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, reasonCode, v, r, s)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, consumeReasonCode, v, r, s)
       ).to.be.revertedWith('Signer is not the owner');
     });
 
@@ -336,7 +317,7 @@ describe('MocaPoints Contract', function () {
       const insufficientAmount = amount + 100;
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, insufficientAmount, this.currentSeason, reasonCode, nonce]
+        [this.realmId, this.realmIdVersion, insufficientAmount, this.currentSeason, consumeReasonCode, nonce]
       );
 
       const signature = await consumer.signMessage(ethers.getBytes(message));
@@ -345,7 +326,7 @@ describe('MocaPoints Contract', function () {
       await expect(
         this.mocaPoints
           .connect(consumer)
-          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, insufficientAmount, reasonCode, v, r, s)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, insufficientAmount, consumeReasonCode, v, r, s)
       ).to.be.revertedWith('Insufficient balance');
     });
 
@@ -355,7 +336,7 @@ describe('MocaPoints Contract', function () {
         const nonce = await this.mocaPoints.nonces(this.realmId);
         const message = ethers.solidityPackedKeccak256(
           ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-          [this.realmId, this.realmIdVersion, amount, this.currentSeason, reasonCode, nonce]
+          [this.realmId, this.realmIdVersion, amount, this.currentSeason, consumeReasonCode, nonce]
         );
 
         const signature = await consumer.signMessage(ethers.getBytes(message));
@@ -363,7 +344,7 @@ describe('MocaPoints Contract', function () {
 
         this.receipt = await this.mocaPoints
           .connect(consumer)
-          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, reasonCode, v, r, s);
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, consumeReasonCode, v, r, s);
       });
 
       it('consumes the balance', async function () {
@@ -374,18 +355,14 @@ describe('MocaPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, reasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
       });
     });
   });
 
   describe('consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)', function () {
-    let amount = 100;
-
     beforeEach(async function () {
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
-      await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+      await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
 
       this.currentSeason = await this.mocaPoints.currentSeason();
       const depositReasonCode = ethers.encodeBytes32String('depositReason');
@@ -416,14 +393,14 @@ describe('MocaPoints Contract', function () {
       const nonce = await this.mocaPoints.nonces(this.realmId);
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, amount, this.currentSeason, reasonCode, nonce]
+        [this.realmId, this.realmIdVersion, amount, this.currentSeason, consumeReasonCode, nonce]
       );
 
       const signature = await other.signMessage(ethers.getBytes(message));
       const {v, r, s} = ethers.Signature.from(signature);
 
       await expect(
-        this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, amount, reasonCode, v, r, s)
+        this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, amount, consumeReasonCode, v, r, s)
       ).to.be.revertedWith('Signer is not the owner');
     });
 
@@ -432,7 +409,7 @@ describe('MocaPoints Contract', function () {
       const insufficientAmount = amount + 100;
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, insufficientAmount, this.currentSeason, reasonCode, nonce]
+        [this.realmId, this.realmIdVersion, insufficientAmount, this.currentSeason, consumeReasonCode, nonce]
       );
 
       const signature = await consumer.signMessage(ethers.getBytes(message));
@@ -441,7 +418,7 @@ describe('MocaPoints Contract', function () {
       await expect(
         this.mocaPoints
           .connect(consumer)
-          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, insufficientAmount, reasonCode, v, r, s)
+          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, insufficientAmount, consumeReasonCode, v, r, s)
       ).to.be.revertedWith('Insufficient balance');
     });
 
@@ -451,7 +428,7 @@ describe('MocaPoints Contract', function () {
         const nonce = await this.mocaPoints.nonces(this.realmId);
         const message = ethers.solidityPackedKeccak256(
           ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-          [this.realmId, this.realmIdVersion, amount, this.currentSeason, reasonCode, nonce]
+          [this.realmId, this.realmIdVersion, amount, this.currentSeason, consumeReasonCode, nonce]
         );
 
         const signature = await consumer.signMessage(ethers.getBytes(message));
@@ -459,7 +436,7 @@ describe('MocaPoints Contract', function () {
 
         this.receipt = await this.mocaPoints
           .connect(consumer)
-          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, amount, reasonCode, v, r, s);
+          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, amount, consumeReasonCode, v, r, s);
       });
 
       it('consumes the balance', async function () {
@@ -470,18 +447,14 @@ describe('MocaPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, reasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
       });
     });
   });
 
   describe('consume(bytes32,string,uint256,bytes32)', function () {
-    let amount = 100;
-
     beforeEach(async function () {
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
-      await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+      await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
 
       this.currentSeason = await this.mocaPoints.currentSeason();
       const depositReasonCode = ethers.encodeBytes32String('depositReason');
@@ -506,21 +479,21 @@ describe('MocaPoints Contract', function () {
 
     it('reverts if msgSender is not the realmId owner', async function () {
       await expect(
-        this.mocaPoints.connect(other)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, reasonCode)
+        this.mocaPoints.connect(other)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode)
       ).to.be.revertedWith('Sender is not the owner');
     });
 
     it('reverts if realmId balance is insufficient', async function () {
       const insufficientAmount = amount + 100;
       await expect(
-        this.mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, insufficientAmount, reasonCode)
+        this.mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, insufficientAmount, consumeReasonCode)
       ).to.be.revertedWith('Insufficient balance');
     });
 
     context('when successful', function () {
       beforeEach(async function () {
         this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
-        this.receipt = await this.mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, reasonCode);
+        this.receipt = await this.mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode);
       });
 
       it('consumes the balance', async function () {
@@ -531,18 +504,14 @@ describe('MocaPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, reasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
       });
     });
   });
 
-  describe('consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)', function () {
-    let amount = 100;
-
+  describe('consume(uint256,uint256,bytes32)', function () {
     beforeEach(async function () {
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
-      await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode]);
+      await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
 
       this.currentSeason = await this.mocaPoints.currentSeason();
       const depositReasonCode = ethers.encodeBytes32String('depositReason');
@@ -559,7 +528,7 @@ describe('MocaPoints Contract', function () {
     });
 
     it('reverts if msgSender is not the realmId owner', async function () {
-      await expect(this.mocaPoints.connect(other)['consume(uint256,uint256,bytes32)'](this.realmId, amount, reasonCode)).to.be.revertedWith(
+      await expect(this.mocaPoints.connect(other)['consume(uint256,uint256,bytes32)'](this.realmId, amount, consumeReasonCode)).to.be.revertedWith(
         'Sender is not the owner'
       );
     });
@@ -567,14 +536,14 @@ describe('MocaPoints Contract', function () {
     it('reverts if realmId balance is insufficient', async function () {
       const insufficientAmount = amount + 100;
       await expect(
-        this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, insufficientAmount, reasonCode)
+        this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, insufficientAmount, consumeReasonCode)
       ).to.be.revertedWith('Insufficient balance');
     });
 
     context('when successful', function () {
       beforeEach(async function () {
         this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
-        this.receipt = await this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, amount, reasonCode);
+        this.receipt = await this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, amount, consumeReasonCode);
       });
 
       it('consumes the balance', async function () {
@@ -585,17 +554,13 @@ describe('MocaPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, reasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
       });
     });
   });
 
   describe('balanceOf(bytes32,uint256)', function () {
-    let amount = 100;
-
     beforeEach(async function () {
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
       this.currentSeason = await this.mocaPoints.currentSeason();
       this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
     });
@@ -633,11 +598,7 @@ describe('MocaPoints Contract', function () {
   });
 
   describe('balanceOf(bytes32,bytes32,string)', function () {
-    let amount = 100;
-
     beforeEach(async function () {
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
       this.currentSeason = await this.mocaPoints.currentSeason();
       this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
     });
@@ -675,11 +636,7 @@ describe('MocaPoints Contract', function () {
   });
 
   describe('balanceOf(uint256)', function () {
-    let amount = 100;
-
     beforeEach(async function () {
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
       this.currentSeason = await this.mocaPoints.currentSeason();
       this.balanceBefore = Number(await this.mocaPoints['balanceOf(uint256)'](this.realmId));
     });
@@ -716,12 +673,8 @@ describe('MocaPoints Contract', function () {
     });
   });
 
-  describe('balanceOf(uint256)', function () {
-    let amount = 100;
-
+  describe('balanceOf(bytes32,string)', function () {
     beforeEach(async function () {
-      this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
       this.currentSeason = await this.mocaPoints.currentSeason();
       this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,string)'](parentNode, name));
     });
@@ -760,15 +713,13 @@ describe('MocaPoints Contract', function () {
 
   describe('preparePayload(uint256,uint256,bytes32)', function () {
     it('returns encoded Payload', async function () {
-      const realmId = await this.mockRealmId.getTokenId(name, parentNode);
-      const realmIdVersion = Number(await this.mockRealmId.burnCounts(realmId));
-      const nonce = await this.mocaPoints.nonces(realmId);
+      const nonce = await this.mocaPoints.nonces(this.realmId);
       const currentSeason = await this.mocaPoints.currentSeason();
 
-      const payload = await this.mocaPoints.preparePayload(realmId, amount, reasonCode);
+      const payload = await this.mocaPoints.preparePayload(this.realmId, amount, consumeReasonCode);
       const expectedPayload = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce]
+        [this.realmId, this.realmIdVersion, amount, currentSeason, consumeReasonCode, nonce]
       );
       expect(payload).to.equal(expectedPayload);
     });
