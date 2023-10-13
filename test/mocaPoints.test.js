@@ -333,10 +333,10 @@ describe('MocaPoints Contract', function () {
     context('when successful', function () {
       beforeEach(async function () {
         this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
-        this.nonce = await this.mocaPoints.nonces(this.realmId);
+        const nonce = await this.mocaPoints.nonces(this.realmId);
         const message = ethers.solidityPackedKeccak256(
           ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-          [this.realmId, this.realmIdVersion, amount, this.currentSeason, consumeReasonCode, this.nonce]
+          [this.realmId, this.realmIdVersion, amount, this.currentSeason, consumeReasonCode, nonce]
         );
 
         const signature = await consumer.signMessage(ethers.getBytes(message));
@@ -355,7 +355,7 @@ describe('MocaPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.nonce, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
       });
     });
   });
@@ -425,10 +425,10 @@ describe('MocaPoints Contract', function () {
     context('when successful', function () {
       beforeEach(async function () {
         this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
-        this.nonce = await this.mocaPoints.nonces(this.realmId);
+        const nonce = await this.mocaPoints.nonces(this.realmId);
         const message = ethers.solidityPackedKeccak256(
           ['uint256', 'uint256', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-          [this.realmId, this.realmIdVersion, amount, this.currentSeason, consumeReasonCode, this.nonce]
+          [this.realmId, this.realmIdVersion, amount, this.currentSeason, consumeReasonCode, nonce]
         );
 
         const signature = await consumer.signMessage(ethers.getBytes(message));
@@ -447,7 +447,7 @@ describe('MocaPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.nonce, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
       });
     });
   });
@@ -493,7 +493,6 @@ describe('MocaPoints Contract', function () {
     context('when successful', function () {
       beforeEach(async function () {
         this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
-        this.nonce = await this.mocaPoints.nonces(this.realmId);
         this.receipt = await this.mocaPoints
           .connect(consumer)
           ['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode);
@@ -507,7 +506,7 @@ describe('MocaPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.nonce, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
       });
     });
   });
@@ -546,7 +545,6 @@ describe('MocaPoints Contract', function () {
     context('when successful', function () {
       beforeEach(async function () {
         this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
-        this.nonce = await this.mocaPoints.nonces(this.realmId);
         this.receipt = await this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, amount, consumeReasonCode);
       });
 
@@ -558,7 +556,7 @@ describe('MocaPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.mocaPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.nonce, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
       });
     });
   });

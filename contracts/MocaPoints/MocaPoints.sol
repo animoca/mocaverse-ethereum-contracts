@@ -73,7 +73,6 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         bytes32 indexed season,
         bytes32 indexed reasonCode,
         address operator,
-        uint256 nonce,
         uint256 realmIdVersion,
         uint256 amount,
         address realmIdOwner
@@ -195,8 +194,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
 
         balances[currentSeason][realmId][realmIdVersion] -= amount;
 
-        emit Consumed(realmId, currentSeason, consumeReasonCode, _msgSender(), nonces[realmId], realmIdVersion, amount, owner);
-        nonces[realmId]++;
+        emit Consumed(realmId, currentSeason, consumeReasonCode, _msgSender(), realmIdVersion, amount, owner);
     }
 
     /// @notice Called with a signature to consume a given amount from the balance of a realmId.
@@ -248,6 +246,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         address owner = realmIdContract.ownerOf(realmId);
         require(signer == owner, "Signer is not the owner");
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner);
+        nonces[realmId]++;
     }
 
     /// @notice Called by the realmId owner to consume a given amount from the realmId's balance.
@@ -287,7 +286,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         require(_msgSender() == owner, "Sender is not the owner");
 
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
-        _consume(realmId, realmIdVersion, amount, consumeReasonCode, _msgSender());
+        _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner);
     }
 
     /// @notice Gets the balance of a given realmId for a specified season.
