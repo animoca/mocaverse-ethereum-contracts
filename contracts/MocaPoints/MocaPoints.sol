@@ -114,7 +114,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @dev Reverts if any of the given reason codes already exists in the mapping.
     /// @dev Emits a {BatchAddedConsumeReasonCode} event if all the given reason codes are successfully added.
     /// @param reasonCodes Array of reason codes to add.
-    function batchAddConsumeReasonCodes(bytes32[] memory reasonCodes) public {
+    function batchAddConsumeReasonCodes(bytes32[] memory reasonCodes) external {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         require(reasonCodes.length > 0, "Empty Reason codes array");
         for (uint256 i = 0; i < reasonCodes.length; i++) {
@@ -130,7 +130,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @dev Reverts if any of the given reason codes do not exist in the mapping.
     /// @dev Emits a {BatchRemovedConsumeReasonCode} event if all the given reason codes are successfully removed.
     /// @param reasonCodes Array of reason codes to remove.
-    function batchRemoveConsumeReasonCodes(bytes32[] memory reasonCodes) public {
+    function batchRemoveConsumeReasonCodes(bytes32[] memory reasonCodes) external {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         require(reasonCodes.length > 0, "Empty Reason codes array");
         for (uint256 i = 0; i < reasonCodes.length; i++) {
@@ -172,7 +172,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         uint256 realmIdVersion,
         uint256 amount,
         bytes32 depositReasonCode
-    ) public {
+    ) external {
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
         deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
     }
@@ -218,7 +218,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param v v value of the signature.
     /// @param s s value of the signature.
     /// @param r r value of the signature.
-    function consume(bytes32 parentNode, string memory name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
+    function consume(bytes32 parentNode, string memory name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
         consume(realmId, amount, consumeReasonCode, v, r, s);
     }
@@ -265,7 +265,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param name The name of the realmId.
     /// @param amount The amount to consume.
     /// @param consumeReasonCode The reason code of the consumption.
-    function consume(bytes32 parentNode, string memory name, uint256 amount, bytes32 consumeReasonCode) public {
+    function consume(bytes32 parentNode, string memory name, uint256 amount, bytes32 consumeReasonCode) external {
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
         consume(realmId, amount, consumeReasonCode);
     }
@@ -366,7 +366,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param amount The amount.
     /// @param reasonCode The reason code.
     /// @return The payload.
-    function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) public view returns (bytes32) {
+    function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) external view returns (bytes32) {
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         bytes32 payload = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode);
         return payload;
