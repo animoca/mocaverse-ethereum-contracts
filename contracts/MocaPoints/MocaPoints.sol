@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {IRealmId} from "./interface/IRealmId.sol";
 import {AccessControlStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/AccessControlStorage.sol";
 import {AccessControlBase} from "@animoca/ethereum-contracts/contracts/access/base/AccessControlBase.sol";
@@ -8,6 +9,7 @@ import {ContractOwnershipBase} from "@animoca/ethereum-contracts/contracts/acces
 import {ContractOwnershipStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/ContractOwnershipStorage.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
 
 /// @title MocaPoints
 /// @notice This contract is designed for managing the mocapoints balances of users.
@@ -282,7 +284,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonce, consumeReasonCode);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
-        address signer = ecrecover(messageDigest, v, r, s);
+        address signer = ECDSA.recover(messageDigest, v, r, s);
         address owner = realmIdContract.ownerOf(realmId);        
         if (signer != owner) {
             revert IncorrectSigner(signer);
