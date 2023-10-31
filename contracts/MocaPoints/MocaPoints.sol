@@ -223,14 +223,15 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param owner Address of the realmId's owner.
     function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner) internal {
 
-        if (balances[currentSeason][realmId][realmIdVersion] < amount) {
+        uint256 balance = balances[currentSeason][realmId][realmIdVersion];
+        if (balance < amount) {
             revert InsufficientBalance(realmId, amount);
         }
         if (!allowedConsumeReasonCodes[consumeReasonCode]) {
             revert ConsumeReasonCodeDoesNotExist(consumeReasonCode);
         }
 
-        balances[currentSeason][realmId][realmIdVersion] -= amount;
+        balances[currentSeason][realmId][realmIdVersion] = balance - amount;
 
         emit Consumed(realmId, currentSeason, consumeReasonCode, _msgSender(), realmIdVersion, amount, owner);
     }
@@ -277,8 +278,9 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param r r value of the signature.
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         // get realmIdVersion from the realmId contract
+        uint256 nonce = nonces[realmId];
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
-        bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], consumeReasonCode);
+        bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonce, consumeReasonCode);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
         address signer = ecrecover(messageDigest, v, r, s);
         address owner = realmIdContract.ownerOf(realmId);        
@@ -287,7 +289,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         }
         
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner);
-        nonces[realmId]++;
+        nonces[realmId] = nonce + 1;
     }
 
     /// @notice Called by the realmId owner to consume a given amount from the realmId's balance.
