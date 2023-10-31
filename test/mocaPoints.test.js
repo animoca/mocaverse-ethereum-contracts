@@ -27,9 +27,10 @@ describe('MocaPoints Contract', function () {
 
     // Deploy the MocaPoints contract
     this.MocaPointsContract = await ethers.getContractFactory('MocaPoints');
-    this.mocaPoints = await upgrades.deployProxy(this.MocaPointsContract, [this.mockRealmIdAddress], {
+    this.mocaPoints = await upgrades.deployProxy(this.MocaPointsContract, [], {
       initializer: 'initialize',
       kind: 'uups',
+      constructorArgs: [this.mockRealmIdAddress],
     });
 
     const ADMIN_ROLE = ethers.keccak256(Buffer.from('ADMIN_ROLE'));
@@ -42,21 +43,27 @@ describe('MocaPoints Contract', function () {
     await loadFixture(fixture, this);
   });
 
-  describe('initialize(address)', function () {
+  describe('initialize()', function () {
     it('reverts when setting the realmId contract address to zero address', async function () {
       const realmIdContractAddress = ethers.ZeroAddress;
-      await expect(upgrades.deployProxy(this.MocaPointsContract, [realmIdContractAddress], {initializer: 'initialize', kind: 'uups'}))
+      await expect(
+        upgrades.deployProxy(this.MocaPointsContract, [], {initializer: 'initialize', kind: 'uups', constructorArgs: [realmIdContractAddress]})
+      )
         .to.be.revertedWithCustomError(this.MocaPointsContract, 'InvalidRealmIdContractAddress')
         .withArgs(ethers.ZeroAddress);
     });
 
     it('reverts if the contract is already initialized', async function () {
-      await expect(this.mocaPoints.initialize(this.mockRealmIdAddress)).to.be.revertedWith('Initializable: contract is already initialized');
+      await expect(this.mocaPoints.initialize()).to.be.revertedWith('Initializable: contract is already initialized');
     });
 
     context('when successful', function () {
       it('initializes the contract with a realmId contract address', async function () {
-        await upgrades.deployProxy(this.MocaPointsContract, [this.mockRealmIdAddress], {initializer: 'initialize', kind: 'uups'});
+        await upgrades.deployProxy(this.MocaPointsContract, [], {
+          initializer: 'initialize',
+          kind: 'uups',
+          constructorArgs: [this.mockRealmIdAddress],
+        });
       });
     });
   });
@@ -752,16 +759,24 @@ describe('MocaPoints Contract', function () {
   describe('Contract Upgrade', function () {
     beforeEach(async function () {
       this.MockMocaPointsUpgrade = await ethers.getContractFactory('MockMocaPointsUpgrade');
-      this.mocaPointsV2 = await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner));
+      this.mocaPointsV2 = await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner), {
+        constructorArgs: [this.mockRealmIdAddress],
+      });
     });
 
     it('reverts if a non owner authorizes an upgrade', async function () {
-      await expect(upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(other))).to.be.reverted;
+      await expect(
+        upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(other), {
+          constructorArgs: [this.mockRealmIdAddress],
+        })
+      ).to.be.reverted;
     });
 
     context('when successful', function () {
       it('owner authorizes an upgrade', async function () {
-        await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner));
+        await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner), {
+          constructorArgs: [this.mockRealmIdAddress],
+        });
       });
 
       it('re-initializes the contract', async function () {

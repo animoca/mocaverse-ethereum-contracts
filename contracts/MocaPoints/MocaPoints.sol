@@ -32,7 +32,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     bytes32 public currentSeason;
     mapping(bytes32 => bool) public seasons;
 
-    IRealmId public realmIdContract;
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    IRealmId public immutable realmIdContract;
 
     mapping(bytes32 => mapping(uint256 => mapping(uint256 => uint256))) public balances; // season => realmId => realmIdVersion => balance
 
@@ -86,17 +87,20 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         address realmIdOwner
     );
 
-    /// @notice Initializes the contract with the provided realmId contract address.
-    /// @dev Reverts if the given address is invalid (equal to ZeroAddress).
     /// @param realmIdContractAddress The realmId contract address.
-    function initialize(address realmIdContractAddress) public initializer {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor(address realmIdContractAddress) {
         if (realmIdContractAddress == address(0)) {
             revert InvalidRealmIdContractAddress(realmIdContractAddress);
         }
+        realmIdContract = IRealmId(realmIdContractAddress);
+    }
 
+    /// @notice Initializes the contract with the provided realmId contract address.
+    /// @dev Reverts if the given address is invalid (equal to ZeroAddress).
+    function initialize() public initializer {
         __UUPSUpgradeable_init();
         ContractOwnershipStorage.layout().proxyInit(_msgSender());
-        realmIdContract = IRealmId(realmIdContractAddress);
     }
 
     /// @notice Checks whether the sender is authorized to upgrade the contract.
