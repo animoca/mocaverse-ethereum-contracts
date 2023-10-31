@@ -33,10 +33,10 @@ describe('MocaPoints Contract', function () {
       constructorArgs: [this.mockRealmIdAddress],
     });
 
-    const ADMIN_ROLE = ethers.keccak256(Buffer.from('ADMIN_ROLE'));
-    const DEPOSITOR_ROLE = ethers.keccak256(Buffer.from('DEPOSITOR_ROLE'));
-    await this.mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin.address);
-    await this.mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor.address);
+    this.ADMIN_ROLE = ethers.keccak256(Buffer.from('ADMIN_ROLE'));
+    this.DEPOSITOR_ROLE = ethers.keccak256(Buffer.from('DEPOSITOR_ROLE'));
+    await this.mocaPoints.connect(owner).grantRole(this.ADMIN_ROLE, admin.address);
+    await this.mocaPoints.connect(owner).grantRole(this.DEPOSITOR_ROLE, depositor.address);
   };
 
   beforeEach(async function () {
@@ -80,7 +80,9 @@ describe('MocaPoints Contract', function () {
 
     it('reverts when a non admin user set current season', async function () {
       const newSeason = ethers.encodeBytes32String('Season1');
-      await expect(this.mocaPoints.connect(other).setCurrentSeason(newSeason)).to.be.reverted;
+      await expect(this.mocaPoints.connect(other).setCurrentSeason(newSeason))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.ADMIN_ROLE, other.address);
     });
 
     context('when successful', function () {
@@ -108,7 +110,9 @@ describe('MocaPoints Contract', function () {
     });
 
     it('reverts when a non admin user trying to add ReasonCodes', async function () {
-      await expect(this.mocaPoints.connect(other).batchAddConsumeReasonCodes([reasonCode1, reasonCode2])).to.be.reverted;
+      await expect(this.mocaPoints.connect(other).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.ADMIN_ROLE, other.address);
     });
 
     it('reverts when adding existing ReasonCodes', async function () {
@@ -155,7 +159,9 @@ describe('MocaPoints Contract', function () {
     });
 
     it('reverts when a non admin user tries to remove reason codes', async function () {
-      await expect(this.mocaPoints.connect(other).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2])).to.be.reverted;
+      await expect(this.mocaPoints.connect(other).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2]))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.ADMIN_ROLE, other.address);
     });
 
     it('reverts when removing reason codes that does not exist', async function () {
@@ -206,7 +212,9 @@ describe('MocaPoints Contract', function () {
             amount,
             this.depositReasonCode
           )
-      ).to.be.reverted;
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.DEPOSITOR_ROLE, other.address);
     });
 
     it('revert if depositing to a different realmId version', async function () {
@@ -269,7 +277,7 @@ describe('MocaPoints Contract', function () {
           ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](this.currentSeason, this.realmId, this.realmIdVersion, amount, this.depositReasonCode)
       )
         .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
-        .withArgs(ethers.keccak256(Buffer.from('DEPOSITOR_ROLE')), other.address);
+        .withArgs(this.DEPOSITOR_ROLE, other.address);
     });
 
     it('revert if depositing to a different realmId version', async function () {
@@ -804,7 +812,9 @@ describe('MocaPoints Contract', function () {
         upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(other), {
           constructorArgs: [this.mockRealmIdAddress],
         })
-      ).to.be.reverted;
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotContractOwner')
+        .withArgs(other.address);
     });
 
     context('when successful', function () {
@@ -816,7 +826,7 @@ describe('MocaPoints Contract', function () {
 
       it('re-initializes the contract', async function () {
         await this.mocaPointsV2.initializeV2();
-        await expect(this.mocaPointsV2.initializeV2()).to.be.reverted;
+        await expect(this.mocaPointsV2.initializeV2()).to.be.revertedWith('Initializable: contract is already initialized');
       });
 
       it('calls to the new function', async function () {
