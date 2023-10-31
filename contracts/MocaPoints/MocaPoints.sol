@@ -131,7 +131,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @dev Reverts if any of the given reason codes already exists in the mapping.
     /// @dev Emits a {BatchAddedConsumeReasonCode} event if all the given reason codes are successfully added.
     /// @param reasonCodes Array of reason codes to add.
-    function batchAddConsumeReasonCodes(bytes32[] memory reasonCodes) external {
+    function batchAddConsumeReasonCodes(bytes32[] calldata reasonCodes) external {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         if (reasonCodes.length <= 0) {
             revert ConsumeReasonCodesArrayEmpty();
@@ -152,7 +152,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @dev Reverts if any of the given reason codes do not exist in the mapping.
     /// @dev Emits a {BatchRemovedConsumeReasonCode} event if all the given reason codes are successfully removed.
     /// @param reasonCodes Array of reason codes to remove.
-    function batchRemoveConsumeReasonCodes(bytes32[] memory reasonCodes) external {
+    function batchRemoveConsumeReasonCodes(bytes32[] calldata reasonCodes) external {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
         if (reasonCodes.length <= 0) {
             revert ConsumeReasonCodesArrayEmpty();
@@ -195,7 +195,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     function deposit(
         bytes32 season,
         bytes32 parentNode,
-        string memory name,
+        string calldata name,
         uint256 realmIdVersion,
         uint256 amount,
         bytes32 depositReasonCode
@@ -247,7 +247,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param v v value of the signature.
     /// @param s s value of the signature.
     /// @param r r value of the signature.
-    function consume(bytes32 parentNode, string memory name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
+    function consume(bytes32 parentNode, string calldata name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
         consume(realmId, amount, consumeReasonCode, v, r, s);
     }
@@ -298,7 +298,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param name The name of the realmId.
     /// @param amount The amount to consume.
     /// @param consumeReasonCode The reason code of the consumption.
-    function consume(bytes32 parentNode, string memory name, uint256 amount, bytes32 consumeReasonCode) external {
+    function consume(bytes32 parentNode, string calldata name, uint256 amount, bytes32 consumeReasonCode) external {
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
         consume(realmId, amount, consumeReasonCode);
     }
@@ -345,7 +345,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param parentNode The parent node of the realmId.
     /// @param name The name of the realmId.
     /// @return The balance.
-    function balanceOf(bytes32 season, bytes32 parentNode, string memory name) external view returns (uint256) {
+    function balanceOf(bytes32 season, bytes32 parentNode, string calldata name) external view returns (uint256) {
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         return balances[season][realmId][realmIdVersion];
@@ -371,7 +371,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param parentNode The parent node of the realmId.
     /// @param name The name of the realmId.
     /// @return The balance.
-    function balanceOf(bytes32 parentNode, string memory name) external view returns (uint256) {
+    function balanceOf(bytes32 parentNode, string calldata name) external view returns (uint256) {
         uint256 realmId = realmIdContract.getTokenId(name, parentNode);
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         return balances[currentSeason][realmId][realmIdVersion];
