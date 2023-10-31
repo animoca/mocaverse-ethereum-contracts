@@ -23,6 +23,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     error ConsumeReasonCodesArrayEmpty();
     error ConsumeReasonCodeAlreadyExists(bytes32 reasonCode);
     error ConsumeReasonCodeDoesNotExist(bytes32 reasonCode);
+    error InvalidRealmIdVersion(uint256 realmId, uint256 realmIdVersion);
     error InsufficientBalance(uint256 realmId, uint256 requiredBalance);
     error IncorrectSigner(address signer);
 
@@ -177,6 +178,12 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param depositReasonCode The reason code of the deposit.
     function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public {
         AccessControlStorage.layout().enforceHasRole(DEPOSITOR_ROLE, _msgSender());
+
+        realmIdContract.ownerOf(realmId);
+        uint256 curRealmIdVersion = realmIdContract.burnCounts(realmId);
+        if (curRealmIdVersion != realmIdVersion) {
+            revert InvalidRealmIdVersion(realmId, realmIdVersion);
+        }
 
         balances[season][realmId][realmIdVersion] += amount;
         emit Deposited(_msgSender(), season, depositReasonCode, realmId, realmIdVersion, amount);

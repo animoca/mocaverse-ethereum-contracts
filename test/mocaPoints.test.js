@@ -22,7 +22,7 @@ describe('MocaPoints Contract', function () {
     this.mockRealmId = await MockRealmIdContract.deploy();
     this.mockRealmIdAddress = this.mockRealmId.target;
 
-    this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
+    this.realmId = Number(await this.mockRealmId.getTokenId(name, parentNode));
     this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
 
     // Deploy the MocaPoints contract
@@ -209,6 +209,24 @@ describe('MocaPoints Contract', function () {
       ).to.be.reverted;
     });
 
+    it('revert if depositing to a different realmId version', async function () {
+      const invalidRealmIdVersion = this.realmIdVersion + 1;
+      await expect(
+        this.mocaPoints
+          .connect(depositor)
+          ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
+            this.currentSeason,
+            parentNode,
+            name,
+            invalidRealmIdVersion,
+            amount,
+            this.depositReasonCode
+          )
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InvalidRealmIdVersion')
+        .withArgs(this.realmId, invalidRealmIdVersion);
+    });
+
     context('when successful', function () {
       beforeEach(async function () {
         this.balanceBefore = Number(await this.mocaPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
@@ -252,6 +270,23 @@ describe('MocaPoints Contract', function () {
       )
         .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
         .withArgs(ethers.keccak256(Buffer.from('DEPOSITOR_ROLE')), other.address);
+    });
+
+    it('revert if depositing to a different realmId version', async function () {
+      const invalidRealmIdVersion = this.realmIdVersion + 1;
+      await expect(
+        this.mocaPoints
+          .connect(depositor)
+          ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](
+            this.currentSeason,
+            this.realmId,
+            invalidRealmIdVersion,
+            amount,
+            this.depositReasonCode
+          )
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InvalidRealmIdVersion')
+        .withArgs(this.realmId, invalidRealmIdVersion);
     });
 
     context('when successful', function () {
