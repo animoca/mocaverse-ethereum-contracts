@@ -18,6 +18,14 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     using ContractOwnershipStorage for ContractOwnershipStorage.Layout;
     using AccessControlStorage for AccessControlStorage.Layout;
 
+    error InvalidRealmIdContractAddress(address addr);
+    error SeasonAlreadySet(bytes32 season);
+    error ConsumeReasonCodesArrayEmpty();
+    error ConsumeReasonCodeAlreadyExists(bytes32 reasonCode);
+    error ConsumeReasonCodeDoesNotExist(bytes32 reasonCode);
+    error InsufficientBalance(uint256 realmId, uint256 requiredBalance);
+    error IncorrectSigner(address signer);
+
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
 
@@ -82,8 +90,11 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @dev Reverts if the given address is invalid (equal to ZeroAddress).
     /// @param realmIdContractAddress The realmId contract address.
     function initialize(address realmIdContractAddress) public initializer {
+        if (realmIdContractAddress == address(0)) {
+            revert InvalidRealmIdContractAddress(realmIdContractAddress);
+        }
+
         __UUPSUpgradeable_init();
-        require(realmIdContractAddress != address(0), "Not a valid Contract Address");
         ContractOwnershipStorage.layout().proxyInit(_msgSender());
         realmIdContract = IRealmId(realmIdContractAddress);
     }
@@ -101,7 +112,10 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param season The season to set.
     function setCurrentSeason(bytes32 season) external {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
-        require(!seasons[season], "Season already set");
+        if (seasons[season]) {
+            revert SeasonAlreadySet(season);
+        }
+        
         currentSeason = season;
         seasons[season] = true;
         emit SetCurrentSeason(season);
@@ -115,9 +129,14 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param reasonCodes Array of reason codes to add.
     function batchAddConsumeReasonCodes(bytes32[] memory reasonCodes) external {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
-        require(reasonCodes.length > 0, "Empty Reason codes array");
+        if (reasonCodes.length <= 0) {
+            revert ConsumeReasonCodesArrayEmpty();
+        }
+        
         for (uint256 i = 0; i < reasonCodes.length; i++) {
-            require(!allowedConsumeReasonCodes[reasonCodes[i]], "Reason code already exists");
+            if (allowedConsumeReasonCodes[reasonCodes[i]]) {
+                revert ConsumeReasonCodeAlreadyExists(reasonCodes[i]);
+            }
             allowedConsumeReasonCodes[reasonCodes[i]] = true;
         }
         emit BatchAddedConsumeReasonCode(reasonCodes);
@@ -131,9 +150,14 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param reasonCodes Array of reason codes to remove.
     function batchRemoveConsumeReasonCodes(bytes32[] memory reasonCodes) external {
         AccessControlStorage.layout().enforceHasRole(ADMIN_ROLE, _msgSender());
-        require(reasonCodes.length > 0, "Empty Reason codes array");
+        if (reasonCodes.length <= 0) {
+            revert ConsumeReasonCodesArrayEmpty();
+        }
+        
         for (uint256 i = 0; i < reasonCodes.length; i++) {
-            require(allowedConsumeReasonCodes[reasonCodes[i]], "Reason code does not exist");
+            if (!allowedConsumeReasonCodes[reasonCodes[i]]) {
+                revert ConsumeReasonCodeDoesNotExist(reasonCodes[i]);
+            }
             delete allowedConsumeReasonCodes[reasonCodes[i]];
         }
         emit BatchRemovedConsumeReasonCode(reasonCodes);
@@ -187,10 +211,13 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param consumeReasonCode The reason code of the consumption.
     /// @param owner Address of the realmId's owner.
     function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner) internal {
-        // Check if the sender has enough balance
-        require(balances[currentSeason][realmId][realmIdVersion] >= amount, "Insufficient balance");
-        // Check if the consumeReasonCode exists and is true in the mapping
-        require(allowedConsumeReasonCodes[consumeReasonCode], "Invalid consume reason code");
+
+        if (balances[currentSeason][realmId][realmIdVersion] < amount) {
+            revert InsufficientBalance(realmId, amount);
+        }
+        if (!allowedConsumeReasonCodes[consumeReasonCode]) {
+            revert ConsumeReasonCodeDoesNotExist(consumeReasonCode);
+        }
 
         balances[currentSeason][realmId][realmIdVersion] -= amount;
 
@@ -243,8 +270,11 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], consumeReasonCode);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
         address signer = ecrecover(messageDigest, v, r, s);
-        address owner = realmIdContract.ownerOf(realmId);
-        require(signer == owner, "Signer is not the owner");
+        address owner = realmIdContract.ownerOf(realmId);        
+        if (signer != owner) {
+            revert IncorrectSigner(signer);
+        }
+        
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner);
         nonces[realmId]++;
     }
@@ -283,7 +313,9 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param consumeReasonCode The reason code of the consumption.
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) public {
         address owner = realmIdContract.ownerOf(realmId);
-        require(_msgSender() == owner, "Sender is not the owner");
+        if (_msgSender() != owner) {
+            revert IncorrectSigner(_msgSender());
+        }
 
         uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner);
