@@ -802,9 +802,6 @@ describe('MocaPoints Contract', function () {
   describe('Contract Upgrade', function () {
     beforeEach(async function () {
       this.MockMocaPointsUpgrade = await ethers.getContractFactory('MockMocaPointsUpgrade');
-      this.mocaPointsV2 = await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner), {
-        constructorArgs: [this.mockRealmIdAddress],
-      });
     });
 
     it('reverts if a non owner authorizes an upgrade', async function () {
@@ -817,22 +814,27 @@ describe('MocaPoints Contract', function () {
         .withArgs(other.address);
     });
 
+    it('reverts if the contract initialized twice', async function () {
+      const mocaPointsV2 = await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner), {
+        constructorArgs: [this.mockRealmIdAddress],
+      });
+      await mocaPointsV2.initializeV2(100);
+      expect(mocaPointsV2.initializeV2(100)).to.be.revertedWith('Initializable: contract is already initialized');
+    });
+
     context('when successful', function () {
-      it('owner authorizes an upgrade', async function () {
-        await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner), {
+      beforeEach(async function () {
+        this.mocaPointsV2 = await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner), {
+          call: {
+            fn: 'initializeV2',
+            args: [100],
+          },
           constructorArgs: [this.mockRealmIdAddress],
         });
       });
 
-      it('re-initializes the contract', async function () {
-        await this.mocaPointsV2.initializeV2();
-        await expect(this.mocaPointsV2.initializeV2()).to.be.revertedWith('Initializable: contract is already initialized');
-      });
-
-      it('calls to the new function', async function () {
-        const val = 100;
-        await this.mocaPointsV2.setVal(val);
-        expect(await this.mocaPointsV2.val()).to.be.equal(val);
+      it('value assigned to the new variable', async function () {
+        expect(await this.mocaPointsV2.val()).to.be.equal(100);
       });
     });
   });

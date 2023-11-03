@@ -8,11 +8,7 @@ contract MockMocaPointsUpgrade is MocaPoints {
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address realmIdContract) MocaPoints(realmIdContract) {}
 
-    function initializeV2() public reinitializer(2) {}
+    function initializeV2(uint256 _newVal) public reinitializer(2) { val = _newVal; }
 
     uint256 public val;
-
-    function setVal(uint256 _newVal) public {
-        val = _newVal;
-    }
 }
