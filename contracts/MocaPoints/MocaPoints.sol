@@ -10,7 +10,6 @@ import {ContractOwnershipStorage} from "@animoca/ethereum-contracts/contracts/ac
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-
 /// @title MocaPoints
 /// @notice This contract is designed for managing the mocapoints balances of users.
 /// @notice Mocapoints balances are registered by realmId (verioned) by season.
@@ -122,7 +121,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         if (seasons[season]) {
             revert SeasonAlreadySet(season);
         }
-        
+
         currentSeason = season;
         seasons[season] = true;
         emit SetCurrentSeason(season);
@@ -139,7 +138,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         if (reasonCodes.length <= 0) {
             revert ConsumeReasonCodesArrayEmpty();
         }
-        
+
         for (uint256 i = 0; i < reasonCodes.length; i++) {
             if (allowedConsumeReasonCodes[reasonCodes[i]]) {
                 revert ConsumeReasonCodeAlreadyExists(reasonCodes[i]);
@@ -160,7 +159,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         if (reasonCodes.length <= 0) {
             revert ConsumeReasonCodesArrayEmpty();
         }
-        
+
         for (uint256 i = 0; i < reasonCodes.length; i++) {
             if (!allowedConsumeReasonCodes[reasonCodes[i]]) {
                 revert ConsumeReasonCodeDoesNotExist(reasonCodes[i]);
@@ -224,7 +223,6 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param consumeReasonCode The reason code of the consumption.
     /// @param owner Address of the realmId's owner.
     function _consume(uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 consumeReasonCode, address owner) internal {
-
         uint256 balance = balances[currentSeason][realmId][realmIdVersion];
         if (balance < amount) {
             revert InsufficientBalance(realmId, amount);
@@ -285,11 +283,11 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonce, consumeReasonCode);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
         address signer = ECDSA.recover(messageDigest, v, r, s);
-        address owner = realmIdContract.ownerOf(realmId);        
+        address owner = realmIdContract.ownerOf(realmId);
         if (signer != owner) {
             revert IncorrectSigner(signer);
         }
-        
+
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner);
         nonces[realmId] = nonce + 1;
     }
