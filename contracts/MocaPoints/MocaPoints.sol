@@ -90,6 +90,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     );
 
     /// @param realmIdContractAddress The realmId contract address.
+    /// @dev Reverts if the given address is invalid (equal to ZeroAddress).
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address realmIdContractAddress) {
         if (realmIdContractAddress == address(0)) {
@@ -99,7 +100,6 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     }
 
     /// @notice Initializes the contract with the provided realmId contract address.
-    /// @dev Reverts if the given address is invalid (equal to ZeroAddress).
     function initialize() public initializer {
         __UUPSUpgradeable_init();
         ContractOwnershipStorage.layout().proxyInit(_msgSender());
@@ -171,6 +171,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
 
     /// @notice Called by a depoistor to increase the balance of a realmId (with a given version) for a specified season.
     /// @dev Reverts if sender does not have Depositor role.
+    /// @dev Reverts if the realmId does not exist.
+    /// @dev Reverts if the given realmId version does not match the current realmId version.
     /// @dev Emits a {Deposited} event if successful.
     /// @param season The season to deposit to.
     /// @param realmId The realmId to deposit to.
@@ -193,6 +195,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @notice Called by a depoistor to increase the balance of a realmId (with a given version) for a specified season.
     /// @notice The realmId is resolved from the given parent node and name.
     /// @dev Reverts if sender does not have Depositor role.
+    /// @dev Reverts if the realmId does not exist.
+    /// @dev Reverts if the given realmId version does not match the current realmId version.
     /// @dev Emits a {Deposited} event with msg.sender as the sender.
     /// @param season The season to deposit to.
     /// @param parentNode The parent node associated with the realmId.
