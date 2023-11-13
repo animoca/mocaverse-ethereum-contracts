@@ -1,6 +1,6 @@
 {
   "name": "@animocabrands/mocaverse-ethereum-contracts-mocapoints",
-  "version": "1.1.4",
+  "version": "1.2.0",
   "author": "Animoca Brands",
   "license": "MIT",
   "repository": {
@@ -43,7 +43,6 @@
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.2",
     "@nomicfoundation/hardhat-ethers": "^3.0.4",
     "@nomicfoundation/hardhat-network-helpers": "^1.0.8",
-    "@nomicfoundation/hardhat-verify": "^1.1.1",
     "@openzeppelin/contracts": "=4.8.2",
     "@openzeppelin/contracts-upgradeable": "^4.9.3",
     "@openzeppelin/hardhat-upgrades": "^2.2.1",
@@ -62,12 +61,9 @@
     "hardhat": "^2.17.3",
     "hardhat-deploy": "^0.11.25",
     "hardhat-deploy-ethers": "^0.4.1",
-    "hardhat-gas-reporter": "^1.0.9",
-    "keccak256": "^1.0.6",
     "lodash.clonedeep": "^4.5.0",
     "lodash.isequal": "^4.5.0",
     "lodash.mergewith": "^4.6.2",
-    "merkletreejs": "^0.3.9",
     "mocha": "^10.2.0",
     "npm-run-all": "^4.1.5",
     "prettier": "^2.8.7",
@@ -75,11 +71,7 @@
     "solhint": "^3.4.1",
     "solhint-plugin-prettier": "^0.0.5",
     "solidity-coverage": "^0.8.2",
-    "solidity-docgen": "^0.6.0-beta.35"
-  },
-  "dependencies": {
-    "@ethersproject/keccak256": "^5.7.0",
-    "@nomiclabs/hardhat-waffle": "^2.0.6",
+    "solidity-docgen": "^0.6.0-beta.35",
     "dotenv": "^16.3.1"
   }
 }

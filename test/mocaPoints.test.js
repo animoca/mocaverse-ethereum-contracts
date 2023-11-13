@@ -22,45 +22,48 @@ describe('MocaPoints Contract', function () {
     this.mockRealmId = await MockRealmIdContract.deploy();
     this.mockRealmIdAddress = this.mockRealmId.target;
 
-    this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
+    this.realmId = Number(await this.mockRealmId.getTokenId(name, parentNode));
     this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
 
     // Deploy the MocaPoints contract
-    const MocaPoints = await ethers.getContractFactory('MocaPoints');
-    this.mocaPoints = await upgrades.deployProxy(MocaPoints, [this.mockRealmIdAddress], {
+    this.MocaPointsContract = await ethers.getContractFactory('MocaPoints');
+    this.mocaPoints = await upgrades.deployProxy(this.MocaPointsContract, [], {
       initializer: 'initialize',
       kind: 'uups',
+      constructorArgs: [this.mockRealmIdAddress],
     });
 
-    const ADMIN_ROLE = ethers.keccak256(Buffer.from('ADMIN_ROLE'));
-    const DEPOSITOR_ROLE = ethers.keccak256(Buffer.from('DEPOSITOR_ROLE'));
-    await this.mocaPoints.connect(owner).grantRole(ADMIN_ROLE, admin.address);
-    await this.mocaPoints.connect(owner).grantRole(DEPOSITOR_ROLE, depositor.address);
+    this.ADMIN_ROLE = ethers.keccak256(Buffer.from('ADMIN_ROLE'));
+    this.DEPOSITOR_ROLE = ethers.keccak256(Buffer.from('DEPOSITOR_ROLE'));
+    await this.mocaPoints.connect(owner).grantRole(this.ADMIN_ROLE, admin.address);
+    await this.mocaPoints.connect(owner).grantRole(this.DEPOSITOR_ROLE, depositor.address);
   };
 
   beforeEach(async function () {
     await loadFixture(fixture, this);
   });
 
-  describe('initialize(address)', function () {
-    before(async function () {
-      this.MocaPointsContract = await ethers.getContractFactory('MocaPoints');
-    });
-
+  describe('initialize()', function () {
     it('reverts when setting the realmId contract address to zero address', async function () {
       const realmIdContractAddress = ethers.ZeroAddress;
       await expect(
-        upgrades.deployProxy(this.MocaPointsContract, [realmIdContractAddress], {initializer: 'initialize', kind: 'uups'})
-      ).to.be.revertedWith('Not a valid Contract Address');
+        upgrades.deployProxy(this.MocaPointsContract, [], {initializer: 'initialize', kind: 'uups', constructorArgs: [realmIdContractAddress]})
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InvalidRealmIdContractAddress')
+        .withArgs(ethers.ZeroAddress);
     });
 
     it('reverts if the contract is already initialized', async function () {
-      await expect(this.mocaPoints.initialize(this.mockRealmIdAddress)).to.be.revertedWith('Initializable: contract is already initialized');
+      await expect(this.mocaPoints.initialize()).to.be.revertedWith('Initializable: contract is already initialized');
     });
 
     context('when successful', function () {
       it('initializes the contract with a realmId contract address', async function () {
-        await upgrades.deployProxy(this.MocaPointsContract, [this.mockRealmIdAddress], {initializer: 'initialize', kind: 'uups'});
+        await upgrades.deployProxy(this.MocaPointsContract, [], {
+          initializer: 'initialize',
+          kind: 'uups',
+          constructorArgs: [this.mockRealmIdAddress],
+        });
       });
     });
   });
@@ -70,12 +73,16 @@ describe('MocaPoints Contract', function () {
       const newSeason = ethers.encodeBytes32String('Season1');
       await this.mocaPoints.connect(admin).setCurrentSeason(newSeason);
 
-      await expect(this.mocaPoints.connect(admin).setCurrentSeason(newSeason)).to.be.revertedWith('Season already set');
+      await expect(this.mocaPoints.connect(admin).setCurrentSeason(newSeason))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'SeasonAlreadySet')
+        .withArgs(newSeason);
     });
 
     it('reverts when a non admin user set current season', async function () {
       const newSeason = ethers.encodeBytes32String('Season1');
-      await expect(this.mocaPoints.connect(other).setCurrentSeason(newSeason)).to.be.reverted;
+      await expect(this.mocaPoints.connect(other).setCurrentSeason(newSeason))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.ADMIN_ROLE, other.address);
     });
 
     context('when successful', function () {
@@ -103,16 +110,23 @@ describe('MocaPoints Contract', function () {
     });
 
     it('reverts when a non admin user trying to add ReasonCodes', async function () {
-      await expect(this.mocaPoints.connect(other).batchAddConsumeReasonCodes([reasonCode1, reasonCode2])).to.be.reverted;
+      await expect(this.mocaPoints.connect(other).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.ADMIN_ROLE, other.address);
     });
 
     it('reverts when adding existing ReasonCodes', async function () {
       await this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1, reasonCode2]);
-      await expect(this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1])).to.be.revertedWith('Reason code already exists');
+      await expect(this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([reasonCode1]))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'ConsumeReasonCodeAlreadyExists')
+        .withArgs(reasonCode1);
     });
 
     it('reverts when adding an empty array of reason codes', async function () {
-      await expect(this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([])).to.be.revertedWith('Empty Reason codes array');
+      await expect(this.mocaPoints.connect(admin).batchAddConsumeReasonCodes([])).to.be.revertedWithCustomError(
+        this.MocaPointsContract,
+        'ConsumeReasonCodesArrayEmpty'
+      );
     });
 
     context('when successful', function () {
@@ -145,17 +159,22 @@ describe('MocaPoints Contract', function () {
     });
 
     it('reverts when a non admin user tries to remove reason codes', async function () {
-      await expect(this.mocaPoints.connect(other).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2])).to.be.reverted;
+      await expect(this.mocaPoints.connect(other).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode2]))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.ADMIN_ROLE, other.address);
     });
 
     it('reverts when removing reason codes that does not exist', async function () {
-      await expect(this.mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode3])).to.be.revertedWith(
-        'Reason code does not exist'
-      );
+      await expect(this.mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([reasonCode1, reasonCode3]))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'ConsumeReasonCodeDoesNotExist')
+        .withArgs(reasonCode3);
     });
 
     it('should revert when removing an empty array of reason codes', async function () {
-      await expect(this.mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([])).to.be.revertedWith('Empty Reason codes array');
+      await expect(this.mocaPoints.connect(admin).batchRemoveConsumeReasonCodes([])).to.be.revertedWithCustomError(
+        this.MocaPointsContract,
+        'ConsumeReasonCodesArrayEmpty'
+      );
     });
 
     context('when successful', function () {
@@ -193,7 +212,27 @@ describe('MocaPoints Contract', function () {
             amount,
             this.depositReasonCode
           )
-      ).to.be.reverted;
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.DEPOSITOR_ROLE, other.address);
+    });
+
+    it('revert if depositing to a different realmId version', async function () {
+      const invalidRealmIdVersion = this.realmIdVersion + 1;
+      await expect(
+        this.mocaPoints
+          .connect(depositor)
+          ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
+            this.currentSeason,
+            parentNode,
+            name,
+            invalidRealmIdVersion,
+            amount,
+            this.depositReasonCode
+          )
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InvalidRealmIdVersion')
+        .withArgs(this.realmId, invalidRealmIdVersion);
     });
 
     context('when successful', function () {
@@ -236,7 +275,26 @@ describe('MocaPoints Contract', function () {
         this.mocaPoints
           .connect(other)
           ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](this.currentSeason, this.realmId, this.realmIdVersion, amount, this.depositReasonCode)
-      ).to.be.reverted;
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotRoleHolder')
+        .withArgs(this.DEPOSITOR_ROLE, other.address);
+    });
+
+    it('revert if depositing to a different realmId version', async function () {
+      const invalidRealmIdVersion = this.realmIdVersion + 1;
+      await expect(
+        this.mocaPoints
+          .connect(depositor)
+          ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](
+            this.currentSeason,
+            this.realmId,
+            invalidRealmIdVersion,
+            amount,
+            this.depositReasonCode
+          )
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InvalidRealmIdVersion')
+        .withArgs(this.realmId, invalidRealmIdVersion);
     });
 
     context('when successful', function () {
@@ -292,7 +350,9 @@ describe('MocaPoints Contract', function () {
         this.mocaPoints
           .connect(consumer)
           ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, invalidconsumereasonCode, v, r, s)
-      ).to.be.revertedWith('Invalid consume reason code');
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'ConsumeReasonCodeDoesNotExist')
+        .withArgs(invalidconsumereasonCode);
     });
 
     it('reverts if signature is not signed from the realmId owner', async function () {
@@ -309,7 +369,9 @@ describe('MocaPoints Contract', function () {
         this.mocaPoints
           .connect(consumer)
           ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, consumeReasonCode, v, r, s)
-      ).to.be.revertedWith('Signer is not the owner');
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'IncorrectSigner')
+        .withArgs(other.address);
     });
 
     it('reverts if realmId balance is insufficient', async function () {
@@ -327,7 +389,9 @@ describe('MocaPoints Contract', function () {
         this.mocaPoints
           .connect(consumer)
           ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, insufficientAmount, consumeReasonCode, v, r, s)
-      ).to.be.revertedWith('Insufficient balance');
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InsufficientBalance')
+        .withArgs(this.realmId, insufficientAmount);
     });
 
     context('when successful', function () {
@@ -386,7 +450,9 @@ describe('MocaPoints Contract', function () {
         this.mocaPoints
           .connect(consumer)
           ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, amount, invalidconsumereasonCode, v, r, s)
-      ).to.be.revertedWith('Invalid consume reason code');
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'ConsumeReasonCodeDoesNotExist')
+        .withArgs(invalidconsumereasonCode);
     });
 
     it('reverts if signature is not signed from the realmId owner', async function () {
@@ -401,7 +467,9 @@ describe('MocaPoints Contract', function () {
 
       await expect(
         this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, amount, consumeReasonCode, v, r, s)
-      ).to.be.revertedWith('Signer is not the owner');
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'IncorrectSigner')
+        .withArgs(other.address);
     });
 
     it('reverts if realmId balance is insufficient', async function () {
@@ -419,7 +487,9 @@ describe('MocaPoints Contract', function () {
         this.mocaPoints
           .connect(consumer)
           ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, insufficientAmount, consumeReasonCode, v, r, s)
-      ).to.be.revertedWith('Insufficient balance');
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InsufficientBalance')
+        .withArgs(this.realmId, insufficientAmount);
     });
 
     context('when successful', function () {
@@ -472,22 +542,24 @@ describe('MocaPoints Contract', function () {
 
     it('reverts if realmId consumes with a non-exists consume reason code', async function () {
       const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
-      await expect(
-        this.mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, invalidconsumereasonCode)
-      ).to.be.revertedWith('Invalid consume reason code');
+      await expect(this.mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, invalidconsumereasonCode))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'ConsumeReasonCodeDoesNotExist')
+        .withArgs(invalidconsumereasonCode);
     });
 
     it('reverts if msgSender is not the realmId owner', async function () {
-      await expect(
-        this.mocaPoints.connect(other)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode)
-      ).to.be.revertedWith('Sender is not the owner');
+      await expect(this.mocaPoints.connect(other)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'IncorrectSigner')
+        .withArgs(other.address);
     });
 
     it('reverts if realmId balance is insufficient', async function () {
       const insufficientAmount = amount + 100;
       await expect(
         this.mocaPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, insufficientAmount, consumeReasonCode)
-      ).to.be.revertedWith('Insufficient balance');
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InsufficientBalance')
+        .withArgs(this.realmId, insufficientAmount);
     });
 
     context('when successful', function () {
@@ -524,22 +596,22 @@ describe('MocaPoints Contract', function () {
 
     it('reverts if realmId consumes with a non-exists consume reason code', async function () {
       const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
-      await expect(
-        this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, amount, invalidconsumereasonCode)
-      ).to.be.revertedWith('Invalid consume reason code');
+      await expect(this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, amount, invalidconsumereasonCode))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'ConsumeReasonCodeDoesNotExist')
+        .withArgs(invalidconsumereasonCode);
     });
 
     it('reverts if msgSender is not the realmId owner', async function () {
-      await expect(this.mocaPoints.connect(other)['consume(uint256,uint256,bytes32)'](this.realmId, amount, consumeReasonCode)).to.be.revertedWith(
-        'Sender is not the owner'
-      );
+      await expect(this.mocaPoints.connect(other)['consume(uint256,uint256,bytes32)'](this.realmId, amount, consumeReasonCode))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'IncorrectSigner')
+        .withArgs(other.address);
     });
 
     it('reverts if realmId balance is insufficient', async function () {
       const insufficientAmount = amount + 100;
-      await expect(
-        this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, insufficientAmount, consumeReasonCode)
-      ).to.be.revertedWith('Insufficient balance');
+      await expect(this.mocaPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, insufficientAmount, consumeReasonCode))
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'InsufficientBalance')
+        .withArgs(this.realmId, insufficientAmount);
     });
 
     context('when successful', function () {
@@ -730,27 +802,39 @@ describe('MocaPoints Contract', function () {
   describe('Contract Upgrade', function () {
     beforeEach(async function () {
       this.MockMocaPointsUpgrade = await ethers.getContractFactory('MockMocaPointsUpgrade');
-      this.mocaPointsV2 = await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner));
     });
 
     it('reverts if a non owner authorizes an upgrade', async function () {
-      await expect(upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(other))).to.be.reverted;
+      await expect(
+        upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(other), {
+          constructorArgs: [this.mockRealmIdAddress],
+        })
+      )
+        .to.be.revertedWithCustomError(this.MocaPointsContract, 'NotContractOwner')
+        .withArgs(other.address);
+    });
+
+    it('reverts if the contract initialized twice', async function () {
+      const mocaPointsV2 = await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner), {
+        constructorArgs: [this.mockRealmIdAddress],
+      });
+      await mocaPointsV2.initializeV2(100);
+      expect(mocaPointsV2.initializeV2(100)).to.be.revertedWith('Initializable: contract is already initialized');
     });
 
     context('when successful', function () {
-      it('owner authorizes an upgrade', async function () {
-        await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner));
+      beforeEach(async function () {
+        this.mocaPointsV2 = await upgrades.upgradeProxy(this.mocaPoints.target, this.MockMocaPointsUpgrade.connect(owner), {
+          call: {
+            fn: 'initializeV2',
+            args: [100],
+          },
+          constructorArgs: [this.mockRealmIdAddress],
+        });
       });
 
-      it('re-initializes the contract', async function () {
-        await this.mocaPointsV2.initializeV2();
-        await expect(this.mocaPointsV2.initializeV2()).to.be.reverted;
-      });
-
-      it('calls to the new function', async function () {
-        const val = 100;
-        await this.mocaPointsV2.setVal(val);
-        expect(await this.mocaPointsV2.val()).to.be.equal(val);
+      it('value assigned to the new variable', async function () {
+        expect(await this.mocaPointsV2.val()).to.be.equal(100);
       });
     });
   });
