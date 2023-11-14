@@ -11,31 +11,22 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @title MocaPoints
-/// @notice This contract is designed for managing the mocapoints balances of users.
-/// @notice Mocapoints balances are registered by realmId (verioned) by season.
+/// @notice This contract is designed for managing the point balances of RealmId.
+/// @notice Point balances are registered by realmId (verioned) by season.
 /// @notice Methods apply to the current version of the realmId if realmId version is not specified.
 /// @notice Methods support identifying the realmId by the realmId itself, or by its parent node and name.
 contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, UUPSUpgradeable {
     using ContractOwnershipStorage for ContractOwnershipStorage.Layout;
     using AccessControlStorage for AccessControlStorage.Layout;
 
-    error InvalidRealmIdContractAddress(address addr);
-    error SeasonAlreadySet(bytes32 season);
-    error ConsumeReasonCodesArrayEmpty();
-    error ConsumeReasonCodeAlreadyExists(bytes32 reasonCode);
-    error ConsumeReasonCodeDoesNotExist(bytes32 reasonCode);
-    error InvalidRealmIdVersion(uint256 realmId, uint256 realmIdVersion);
-    error InsufficientBalance(uint256 realmId, uint256 requiredBalance);
-    error IncorrectSigner(address signer);
-
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant DEPOSITOR_ROLE = keccak256("DEPOSITOR_ROLE");
 
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    IRealmId public immutable REALM_ID_CONTRACT;
+
     bytes32 public currentSeason;
     mapping(bytes32 => bool) public seasons;
-
-    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-    IRealmId public immutable realmIdContract;
 
     mapping(bytes32 => mapping(uint256 => mapping(uint256 => uint256))) public balances; // season => realmId => realmIdVersion => balance
 
@@ -89,6 +80,39 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         address realmIdOwner
     );
 
+    /// @notice Thrown at construction when the given realmId contract address is invalid.
+    /// @param addr The invalid realmId contract address.
+    error InvalidRealmIdContractAddress(address addr);
+
+    /// @notice Thrown when the given season has already been set.
+    /// @param season The season that already exists in the mapping.
+    error SeasonAlreadySet(bytes32 season);
+
+    /// @notice Thrown when the given consume reason codes array is empty.
+    error ConsumeReasonCodesArrayEmpty();
+
+    /// @notice Thrown when the given consume reason code already exists in the mapping.
+    /// @param reasonCode The reason code that already exists in the mapping.
+    error ConsumeReasonCodeAlreadyExists(bytes32 reasonCode);
+
+    /// @notice Thrown when the given reason code does not exist in the mapping.
+    /// @param reasonCode The reason code that does not exist in the mapping.
+    error ConsumeReasonCodeDoesNotExist(bytes32 reasonCode);
+
+    /// @notice Thrown when the given realmId version does not match the current realmId version.
+    /// @param realmId The given realmId.
+    /// @param realmIdVersion The given realmId version.
+    error InvalidRealmIdVersion(uint256 realmId, uint256 realmIdVersion);
+
+    /// @notice Thrown when the realmId does not have enough balance
+    /// @param realmId The given realmId.
+    /// @param requiredBalance The required balance.
+    error InsufficientBalance(uint256 realmId, uint256 requiredBalance);
+
+    /// @notice Thrown when the signer is not the realmId owner.
+    /// @param signer The incorrect signer.
+    error IncorrectSigner(address signer);
+
     /// @param realmIdContractAddress The realmId contract address.
     /// @dev Reverts if the given address is invalid (equal to ZeroAddress).
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -96,7 +120,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         if (realmIdContractAddress == address(0)) {
             revert InvalidRealmIdContractAddress(realmIdContractAddress);
         }
-        realmIdContract = IRealmId(realmIdContractAddress);
+        REALM_ID_CONTRACT = IRealmId(realmIdContractAddress);
     }
 
     /// @notice Initializes the contract with the provided realmId contract address.
@@ -182,8 +206,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     function deposit(bytes32 season, uint256 realmId, uint256 realmIdVersion, uint256 amount, bytes32 depositReasonCode) public {
         AccessControlStorage.layout().enforceHasRole(DEPOSITOR_ROLE, _msgSender());
 
-        realmIdContract.ownerOf(realmId);
-        uint256 curRealmIdVersion = realmIdContract.burnCounts(realmId);
+        REALM_ID_CONTRACT.ownerOf(realmId);
+        uint256 curRealmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
         if (curRealmIdVersion != realmIdVersion) {
             revert InvalidRealmIdVersion(realmId, realmIdVersion);
         }
@@ -212,7 +236,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
         uint256 amount,
         bytes32 depositReasonCode
     ) external {
-        uint256 realmId = realmIdContract.getTokenId(name, parentNode);
+        uint256 realmId = REALM_ID_CONTRACT.getTokenId(name, parentNode);
         deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
     }
 
@@ -260,7 +284,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param s s value of the signature.
     /// @param r r value of the signature.
     function consume(bytes32 parentNode, string calldata name, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) external {
-        uint256 realmId = realmIdContract.getTokenId(name, parentNode);
+        uint256 realmId = REALM_ID_CONTRACT.getTokenId(name, parentNode);
         consume(realmId, amount, consumeReasonCode, v, r, s);
     }
 
@@ -283,11 +307,11 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
         // get realmIdVersion from the realmId contract
         uint256 nonce = nonces[realmId];
-        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
         bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonce, consumeReasonCode);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
         address signer = ECDSA.recover(messageDigest, v, r, s);
-        address owner = realmIdContract.ownerOf(realmId);
+        address owner = REALM_ID_CONTRACT.ownerOf(realmId);
         if (signer != owner) {
             revert IncorrectSigner(signer);
         }
@@ -312,7 +336,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param amount The amount to consume.
     /// @param consumeReasonCode The reason code of the consumption.
     function consume(bytes32 parentNode, string calldata name, uint256 amount, bytes32 consumeReasonCode) external {
-        uint256 realmId = realmIdContract.getTokenId(name, parentNode);
+        uint256 realmId = REALM_ID_CONTRACT.getTokenId(name, parentNode);
         consume(realmId, amount, consumeReasonCode);
     }
 
@@ -329,12 +353,12 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param amount The amount to consume.
     /// @param consumeReasonCode The reason code of the consumption.
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode) public {
-        address owner = realmIdContract.ownerOf(realmId);
+        address owner = REALM_ID_CONTRACT.ownerOf(realmId);
         if (_msgSender() != owner) {
             revert IncorrectSigner(_msgSender());
         }
 
-        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner);
     }
 
@@ -345,7 +369,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param realmId The realmId.
     /// @return The balance.
     function balanceOf(bytes32 season, uint256 realmId) external view returns (uint256) {
-        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
         return balances[season][realmId][realmIdVersion];
     }
 
@@ -359,8 +383,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param name The name of the realmId.
     /// @return The balance.
     function balanceOf(bytes32 season, bytes32 parentNode, string calldata name) external view returns (uint256) {
-        uint256 realmId = realmIdContract.getTokenId(name, parentNode);
-        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        uint256 realmId = REALM_ID_CONTRACT.getTokenId(name, parentNode);
+        uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
         return balances[season][realmId][realmIdVersion];
     }
 
@@ -371,7 +395,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param realmId The realmId.
     /// @return The balance.
     function balanceOf(uint256 realmId) external view returns (uint256) {
-        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
@@ -385,8 +409,8 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param name The name of the realmId.
     /// @return The balance.
     function balanceOf(bytes32 parentNode, string calldata name) external view returns (uint256) {
-        uint256 realmId = realmIdContract.getTokenId(name, parentNode);
-        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        uint256 realmId = REALM_ID_CONTRACT.getTokenId(name, parentNode);
+        uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
         return balances[currentSeason][realmId][realmIdVersion];
     }
 
@@ -415,7 +439,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param reasonCode The reason code.
     /// @return The payload.
     function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) external view returns (bytes32) {
-        uint256 realmIdVersion = realmIdContract.burnCounts(realmId);
+        uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
         bytes32 payload = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode);
         return payload;
     }
