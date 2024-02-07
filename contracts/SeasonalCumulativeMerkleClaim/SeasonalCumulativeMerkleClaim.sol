@@ -17,8 +17,8 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
     mapping(bytes32 => uint256) public nonces;
     mapping(bytes32 => bool) public claimed;
 
-    event Paused(bytes32 season);
-    event Unpaused(bytes32 season);
+    event Pause(bytes32 season);
+    event Unpause(bytes32 season);
 
     /// @notice Emitted when a new merkle root is set.
     /// @param season The season that the merkle root would be set.
@@ -42,6 +42,10 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
         bytes32 depositReasonCode,
         uint256 nonce
     );
+
+    /// @notice Thrown when the moca point contract address is invalid.
+    /// @param mocaPointsContractAddress The address of the invalid moca point contract.
+    error InvalidMocaPointsContractAddress(address mocaPointsContractAddress);
 
     /// @notice Thrown when trying to claim the same leaf more than once.
     /// @param season The season of the claim.
@@ -82,7 +86,47 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
     error SeasonNotPaused(bytes32 season);
 
     constructor(address mocaPointsContractAddress) ContractOwnership(msg.sender) {
+        if (mocaPointsContractAddress == address(0)) {
+            revert InvalidMocaPointsContractAddress(mocaPointsContractAddress);
+        }
         MOCA_POINTS_CONTRACT = IMocaPoints(mocaPointsContractAddress);
+    }
+
+    /// @notice Pauses a season's claim
+    /// @dev Reverts with {NotContractOwner} if the sender is not the contract owner.
+    /// @dev Reverts with {SeasonIsPaused} if the season is already paused.
+    /// @dev Emits a {Pause} event.
+    /// @param season The season to be paused.    
+    function pause(bytes32 season) external {
+        ContractOwnershipStorage.layout().enforceIsContractOwner(msg.sender);
+        if (paused[season]) {
+            revert SeasonIsPaused(season);
+        }
+
+        paused[season] = true;
+        emit Pause(season);
+    }
+
+    /// @notice Unpause a season's claim
+    /// @dev Reverts with {NotContractOwner} if the sender is not the contract owner.
+    /// @dev Reverts with {SeasonNotPaused} if the season is not paused.
+    /// @dev Emits an {Unpause} event.
+    /// @param season The season to be unpaused.
+    function unpause(bytes32 season) external {
+        ContractOwnershipStorage.layout().enforceIsContractOwner(msg.sender);
+        _unpause(season);
+    }
+
+    /// @notice Internal function for unpause a season's claim
+    /// @dev Reverts with {SeasonNotPaused} if the season is not paused.
+    /// @dev Emits an {Unpause} event.
+    /// @param season The season to be unpaused.
+    function _unpause(bytes32 season) internal {
+        if (!paused[season]) {
+            revert SeasonNotPaused(season);
+        }
+        paused[season] = false;
+        emit Unpause(season);
     }
 
     /// @notice Sets the merkle root for a new claiming period and unpauses the season.
@@ -96,7 +140,9 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
     function setMerkleRoot(bytes32 season, bytes32 merkleRoot) public {
         ContractOwnershipStorage.layout().enforceIsContractOwner(msg.sender);
 
-        if (roots[season] != 0 && !paused[season]) {
+        bool isPaused = paused[season];
+
+        if (roots[season] != 0 && !isPaused) {
             revert SeasonNotPaused(season);
         }
         if (!MOCA_POINTS_CONTRACT.seasons(season)) {
@@ -109,8 +155,9 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
         }
         emit MerkleRootSet(season, merkleRoot);
 
-        paused[season] = false;
-        emit Unpaused(season);
+        if (isPaused) {
+            _unpause(season);
+        }
     }
 
     /// @notice Executes the payout for a given realmId (anyone can call this function).
@@ -149,11 +196,12 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
 
         bytes32 leaf = keccak256(abi.encodePacked(season, realmId, realmIdVersion, amount, depositReasonCode, currentNonce));
 
-        if (claimed[leaf]) {
-            revert AlreadyClaimed(season, realmId, realmIdVersion, amount, depositReasonCode, currentNonce);
-        }
         if (!proof.verifyCalldata(currentRoot, leaf)) {
             revert InvalidProof(season, realmId, realmIdVersion, amount, depositReasonCode, currentNonce);
+        }
+
+        if (claimed[leaf]) {
+            revert AlreadyClaimed(season, realmId, realmIdVersion, amount, depositReasonCode, currentNonce);
         }
 
         claimed[leaf] = true;
