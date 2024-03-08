@@ -7,8 +7,8 @@ describe('RealmPoints Contract', function () {
 
   const amount = 100;
   const consumeReasonCode = ethers.encodeBytes32String('consumeReason');
-  const parentNode = ethers.encodeBytes32String('parentNode');
-  const name = 'xyz';
+  const parentNode = ethers.encodeBytes32String('moca');
+  const name = 'test';
 
   before(async function () {
     [owner, admin, depositor, consumer, other] = await ethers.getSigners();
