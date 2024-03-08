@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-import {MocaPoints} from "../../MocaPoints.sol";
+import {RealmPoints} from "../../RealmPoints.sol";
 
-contract MockMocaPointsUpgrade is MocaPoints {
+contract MockRealmPointsUpgrade is RealmPoints {
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor(address realmIdContract) MocaPoints(realmIdContract) {}
+    constructor(address realmIdContract) RealmPoints(realmIdContract) {}
 
     function initializeV2(uint256 _newVal) public reinitializer(2) {
         val = _newVal;
