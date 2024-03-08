@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
-import {IRealmId} from "../MocaPoints/interface/IRealmId.sol";
-import {IMocaPoints} from "./interface/IMocaPoints.sol";
+import {IRealmId} from "../RealmPoints/interface/IRealmId.sol";
+import {IRealmPoints} from "./interface/IRealmPoints.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {ContractOwnership} from "@animoca/ethereum-contracts/contracts/access/ContractOwnership.sol";
 import {ContractOwnershipStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/ContractOwnershipStorage.sol";
@@ -10,7 +10,7 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
     using MerkleProof for bytes32[];
     using ContractOwnershipStorage for ContractOwnershipStorage.Layout;
 
-    IMocaPoints public immutable MOCA_POINTS_CONTRACT;
+    IRealmPoints public immutable REALM_POINTS_CONTRACT;
 
     mapping(bytes32 => bool) public paused;
     mapping(bytes32 => bytes32) public roots;
@@ -43,9 +43,9 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
         uint256 nonce
     );
 
-    /// @notice Thrown when the moca point contract address is invalid.
-    /// @param mocaPointsContractAddress The address of the invalid moca point contract.
-    error InvalidMocaPointsContractAddress(address mocaPointsContractAddress);
+    /// @notice Thrown when the realm point contract address is invalid.
+    /// @param realmPointsContractAddress The address of the invalid realm point contract.
+    error InvalidRealmPointsContractAddress(address realmPointsContractAddress);
 
     /// @notice Thrown when trying to claim the same leaf more than once.
     /// @param season The season of the claim.
@@ -85,18 +85,18 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
     /// @param season The season that is not paused.
     error SeasonNotPaused(bytes32 season);
 
-    constructor(address mocaPointsContractAddress) ContractOwnership(msg.sender) {
-        if (mocaPointsContractAddress == address(0)) {
-            revert InvalidMocaPointsContractAddress(mocaPointsContractAddress);
+    constructor(address realmPointsContractAddress) ContractOwnership(msg.sender) {
+        if (realmPointsContractAddress == address(0)) {
+            revert InvalidRealmPointsContractAddress(realmPointsContractAddress);
         }
-        MOCA_POINTS_CONTRACT = IMocaPoints(mocaPointsContractAddress);
+        REALM_POINTS_CONTRACT = IRealmPoints(realmPointsContractAddress);
     }
 
     /// @notice Pauses a season's claim
     /// @dev Reverts with {NotContractOwner} if the sender is not the contract owner.
     /// @dev Reverts with {SeasonIsPaused} if the season is already paused.
     /// @dev Emits a {Pause} event.
-    /// @param season The season to be paused.    
+    /// @param season The season to be paused.
     function pause(bytes32 season) external {
         ContractOwnershipStorage.layout().enforceIsContractOwner(msg.sender);
         if (paused[season]) {
@@ -145,7 +145,7 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
         if (roots[season] != 0 && !isPaused) {
             revert SeasonNotPaused(season);
         }
-        if (!MOCA_POINTS_CONTRACT.seasons(season)) {
+        if (!REALM_POINTS_CONTRACT.seasons(season)) {
             revert InvalidSeason(season);
         }
 
@@ -206,7 +206,7 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
 
         claimed[leaf] = true;
 
-        MOCA_POINTS_CONTRACT.deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
+        REALM_POINTS_CONTRACT.deposit(season, realmId, realmIdVersion, amount, depositReasonCode);
 
         emit PayoutClaimed(season, currentRoot, realmId, realmIdVersion, amount, depositReasonCode, currentNonce);
     }

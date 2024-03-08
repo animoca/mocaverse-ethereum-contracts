@@ -3,7 +3,7 @@ const {MerkleTree} = require('merkletreejs');
 const {ethers, upgrades} = require('hardhat');
 const {loadFixture} = require('@animoca/ethereum-contract-helpers/src/test/fixtures');
 
-describe('SeasonalCumulativeMerkleClaim', function () {
+describe('SeasonalCumulativeMerkleClaim Contract', function () {
   let owner, admin, other, claimer1, claimer2, claimer3, claimer4;
 
   const amount = 100;
@@ -28,20 +28,20 @@ describe('SeasonalCumulativeMerkleClaim', function () {
     this.realmId = Number(await this.mockRealmId.getTokenId(name, parentNode));
     this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
 
-    // Deploy the MocaPoints contract
-    this.MocaPointsContract = await ethers.getContractFactory('MocaPoints');
-    this.mocaPoints = await upgrades.deployProxy(this.MocaPointsContract, [], {
+    // Deploy the RealmPoints contract
+    this.RealmPointsContract = await ethers.getContractFactory('RealmPoints');
+    this.realmPoints = await upgrades.deployProxy(this.RealmPointsContract, [], {
       initializer: 'initialize',
       kind: 'uups',
       constructorArgs: [this.mockRealmIdAddress],
     });
 
-    await this.mocaPoints.connect(owner).grantRole(ethers.keccak256(Buffer.from('ADMIN_ROLE')), admin.address);
-    await this.mocaPoints.connect(admin).setCurrentSeason(currentSeason);
+    await this.realmPoints.connect(owner).grantRole(ethers.keccak256(Buffer.from('ADMIN_ROLE')), admin.address);
+    await this.realmPoints.connect(admin).setCurrentSeason(currentSeason);
 
     const SeasonalCumulativeMerkleClaimContract = await ethers.getContractFactory('SeasonalCumulativeMerkleClaim');
-    this.claimContract = await SeasonalCumulativeMerkleClaimContract.deploy(this.mocaPoints.target);
-    await this.mocaPoints.connect(owner).grantRole(ethers.keccak256(Buffer.from('DEPOSITOR_ROLE')), this.claimContract.target);
+    this.claimContract = await SeasonalCumulativeMerkleClaimContract.deploy(this.realmPoints.target);
+    await this.realmPoints.connect(owner).grantRole(ethers.keccak256(Buffer.from('DEPOSITOR_ROLE')), this.claimContract.target);
   };
 
   beforeEach(async function () {
@@ -49,10 +49,10 @@ describe('SeasonalCumulativeMerkleClaim', function () {
   });
 
   describe('constructor(address)', function () {
-    it('should revert if the MocaPoints contract address is the zero address', async function () {
+    it('should revert if the RealmPoints contract address is the zero address', async function () {
       const SeasonalCumulativeMerkleClaimContract = await ethers.getContractFactory('SeasonalCumulativeMerkleClaim');
       await expect(SeasonalCumulativeMerkleClaimContract.deploy(ethers.ZeroAddress))
-        .to.be.revertedWithCustomError(this.claimContract, 'InvalidMocaPointsContractAddress')
+        .to.be.revertedWithCustomError(this.claimContract, 'InvalidRealmPointsContractAddress')
         .withArgs(ethers.ZeroAddress);
     });
   });
@@ -214,7 +214,7 @@ describe('SeasonalCumulativeMerkleClaim', function () {
             amount: 1n,
             depositReasonCode: this.depositReasonCode,
             nonce: this.nextNonce,
-          }
+          },
         ];
         this.leafs = this.rawLeafs.map((el) =>
           ethers.solidityPacked(
@@ -280,7 +280,7 @@ describe('SeasonalCumulativeMerkleClaim', function () {
           );
       });
 
-      context('when successful', function() {
+      context('when successful', function () {
         beforeEach(async function () {
           this.receipt = await this.claimContract.claimPayout(
             this.rawLeafs[0].season,
@@ -292,16 +292,18 @@ describe('SeasonalCumulativeMerkleClaim', function () {
           );
         });
 
-        it('emits a PayoutClaimed event', async function() {
-          await expect(this.receipt).to.emit(this.claimContract, 'PayoutClaimed').withArgs(
-            this.rawLeafs[0].season,
-            this.root,
-            this.rawLeafs[0].realmId,
-            this.rawLeafs[0].realmIdVersion,
-            this.rawLeafs[0].amount,
-            this.rawLeafs[0].depositReasonCode,
-            this.nextNonce
-          );
+        it('emits a PayoutClaimed event', async function () {
+          await expect(this.receipt)
+            .to.emit(this.claimContract, 'PayoutClaimed')
+            .withArgs(
+              this.rawLeafs[0].season,
+              this.root,
+              this.rawLeafs[0].realmId,
+              this.rawLeafs[0].realmIdVersion,
+              this.rawLeafs[0].amount,
+              this.rawLeafs[0].depositReasonCode,
+              this.nextNonce
+            );
         });
       });
     });

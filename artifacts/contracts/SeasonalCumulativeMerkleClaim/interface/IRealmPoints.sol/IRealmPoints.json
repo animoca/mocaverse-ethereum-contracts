@@ -1,7 +1,7 @@
 {
   "_format": "hh-sol-artifact-1",
-  "contractName": "IMocaPoints",
-  "sourceName": "contracts/SeasonalCumulativeMerkleClaim/interface/IMocaPoints.sol",
+  "contractName": "IRealmPoints",
+  "sourceName": "contracts/SeasonalCumulativeMerkleClaim/interface/IRealmPoints.sol",
   "abi": [
     {
       "inputs": [
