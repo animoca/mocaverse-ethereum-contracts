@@ -5,7 +5,7 @@ module.exports = {
     mocha: true,
   },
   parserOptions: {
-    ecmaVersion: 9,
+    ecmaVersion: 2020,
   },
   rules: {
     'prettier/prettier': 'error',
