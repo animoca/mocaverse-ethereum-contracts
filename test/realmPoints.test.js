@@ -3,28 +3,32 @@ const {ethers, upgrades} = require('hardhat');
 const {loadFixture} = require('@animoca/ethereum-contract-helpers/src/test/fixtures');
 
 describe('RealmPoints Contract', function () {
-  let owner, admin, depositor, consumer, other;
+  let owner, admin, depositor, consumer, signerEOA, other;
 
   const amount = 100;
   const consumeReasonCode = ethers.encodeBytes32String('consumeReason');
   const parentNode = ethers.encodeBytes32String('moca');
-  const name = 'test';
-
-  before(async function () {
-    [owner, admin, depositor, consumer, other] = await ethers.getSigners();
-  });
+  const nameEOA = 'eoa';
+  const name1271 = '1271';
 
   const fixture = async function () {
-    [owner, admin, depositor] = await ethers.getSigners();
+    [owner, admin, depositor, consumer, signerEOA, other] = await ethers.getSigners();
+
+    // Deploy the MockERC1271
+    this.contractWallet = await ethers.deployContract('MockERC1271', [owner]);
 
     // Deploy the MockRealmId contract
     const MockRealmIdContract = await ethers.getContractFactory('MockRealmId');
     this.mockRealmId = await MockRealmIdContract.deploy();
-    this.mockRealmIdAddress = this.mockRealmId.target;
+    this.mockRealmIdAddress = await this.mockRealmId.getAddress();
 
-    this.realmId = Number(await this.mockRealmId.getTokenId(name, parentNode));
-    this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
-    this.realmIdOwner = await this.mockRealmId.ownerOf(this.realmId);
+    this.realmId = await this.mockRealmId.getTokenId(nameEOA, parentNode);
+    this.realmIdVersion = await this.mockRealmId.burnCounts(this.realmId);
+    this.realmIdOwner = await this.mockRealmId.ownerOf(this.realmId); //signerEOA
+
+    this.realmId1271 = await this.mockRealmId.getTokenId(name1271, parentNode);
+    this.realmId1271Version = await this.mockRealmId.burnCounts(this.realmId1271);
+    this.realmId1271Owner = await this.mockRealmId.ownerOf(this.realmId1271); //signer1271
 
     // Deploy the RealmPoints contract
     this.RealmPointsContract = await ethers.getContractFactory('RealmPoints');
@@ -208,7 +212,7 @@ describe('RealmPoints Contract', function () {
           ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
             this.currentSeason,
             parentNode,
-            name,
+            nameEOA,
             this.realmIdVersion,
             amount,
             this.depositReasonCode
@@ -219,14 +223,14 @@ describe('RealmPoints Contract', function () {
     });
 
     it('revert if depositing to a different realmId version', async function () {
-      const invalidRealmIdVersion = this.realmIdVersion + 1;
+      const invalidRealmIdVersion = this.realmIdVersion + 1n;
       await expect(
         this.realmPoints
           .connect(depositor)
           ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
             this.currentSeason,
             parentNode,
-            name,
+            nameEOA,
             invalidRealmIdVersion,
             amount,
             this.depositReasonCode
@@ -238,13 +242,13 @@ describe('RealmPoints Contract', function () {
 
     context('when successful', function () {
       beforeEach(async function () {
-        this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+        this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
         this.receipt = await this.realmPoints
           .connect(depositor)
           ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
             this.currentSeason,
             parentNode,
-            name,
+            nameEOA,
             this.realmIdVersion,
             amount,
             this.depositReasonCode
@@ -252,7 +256,7 @@ describe('RealmPoints Contract', function () {
       });
 
       it('deposits with parendNode and name', async function () {
-        const balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+        const balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
         expect(balanceAfter - this.balanceBefore).to.equal(amount);
       });
 
@@ -282,7 +286,7 @@ describe('RealmPoints Contract', function () {
     });
 
     it('revert if depositing to a different realmId version', async function () {
-      const invalidRealmIdVersion = this.realmIdVersion + 1;
+      const invalidRealmIdVersion = this.realmIdVersion + 1n;
       await expect(
         this.realmPoints
           .connect(depositor)
@@ -318,7 +322,7 @@ describe('RealmPoints Contract', function () {
     });
   });
 
-  describe('consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)', function () {
+  describe('consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32) - EOA Wallet', function () {
     beforeEach(async function () {
       await this.realmPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
 
@@ -329,7 +333,7 @@ describe('RealmPoints Contract', function () {
         ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
           this.currentSeason,
           parentNode,
-          name,
+          nameEOA,
           this.realmIdVersion,
           amount,
           depositReasonCode
@@ -341,16 +345,16 @@ describe('RealmPoints Contract', function () {
       const invalidconsumereasonCode = ethers.encodeBytes32String('invalidReason');
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, this.realmIdOwner, amount, this.currentSeason, invalidconsumereasonCode, nonce]
+        [this.realmId, this.realmIdVersion, consumer.address, amount, this.currentSeason, invalidconsumereasonCode, nonce]
       );
 
-      const signature = await consumer.signMessage(ethers.getBytes(message));
+      const signature = await signerEOA.signMessage(ethers.getBytes(message));
       const {v, r, s} = ethers.Signature.from(signature);
 
       await expect(
         this.realmPoints
           .connect(consumer)
-          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, invalidconsumereasonCode, v, r, s)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, nameEOA, amount, invalidconsumereasonCode, v, r, s)
       )
         .to.be.revertedWithCustomError(this.RealmPointsContract, 'ConsumeReasonCodeDoesNotExist')
         .withArgs(invalidconsumereasonCode);
@@ -360,7 +364,7 @@ describe('RealmPoints Contract', function () {
       const nonce = await this.realmPoints.nonces(this.realmId);
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, this.realmIdOwner, amount, this.currentSeason, consumeReasonCode, nonce]
+        [this.realmId, this.realmIdVersion, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
       );
 
       const signature = await other.signMessage(ethers.getBytes(message));
@@ -369,7 +373,24 @@ describe('RealmPoints Contract', function () {
       await expect(
         this.realmPoints
           .connect(consumer)
-          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, consumeReasonCode, v, r, s)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, nameEOA, amount, consumeReasonCode, v, r, s)
+      ).to.be.revertedWithCustomError(this.RealmPointsContract, 'InvalidSignature');
+    });
+
+    it('reverts if the msg.sender is not the specified spender', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId);
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId, this.realmIdVersion, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
+      );
+
+      const signature = await signerEOA.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(other)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, nameEOA, amount, consumeReasonCode, v, r, s)
       ).to.be.revertedWithCustomError(this.RealmPointsContract, 'InvalidSignature');
     });
 
@@ -378,16 +399,16 @@ describe('RealmPoints Contract', function () {
       const insufficientAmount = amount + 100;
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, this.realmIdOwner, insufficientAmount, this.currentSeason, consumeReasonCode, nonce]
+        [this.realmId, this.realmIdVersion, consumer.address, insufficientAmount, this.currentSeason, consumeReasonCode, nonce]
       );
 
-      const signature = await consumer.signMessage(ethers.getBytes(message));
+      const signature = await signerEOA.signMessage(ethers.getBytes(message));
       const {v, r, s} = ethers.Signature.from(signature);
 
       await expect(
         this.realmPoints
           .connect(consumer)
-          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, insufficientAmount, consumeReasonCode, v, r, s)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, nameEOA, insufficientAmount, consumeReasonCode, v, r, s)
       )
         .to.be.revertedWithCustomError(this.RealmPointsContract, 'InsufficientBalance')
         .withArgs(this.realmId, insufficientAmount);
@@ -395,35 +416,165 @@ describe('RealmPoints Contract', function () {
 
     context('when successful', function () {
       beforeEach(async function () {
-        this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+        this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
         const nonce = await this.realmPoints.nonces(this.realmId);
         const message = ethers.solidityPackedKeccak256(
           ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-          [this.realmId, this.realmIdVersion, this.realmIdOwner, amount, this.currentSeason, consumeReasonCode, nonce]
+          [this.realmId, this.realmIdVersion, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
         );
 
-        const signature = await consumer.signMessage(ethers.getBytes(message));
+        const signature = await signerEOA.signMessage(ethers.getBytes(message));
         const {v, r, s} = ethers.Signature.from(signature);
 
         this.receipt = await this.realmPoints
           .connect(consumer)
-          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name, amount, consumeReasonCode, v, r, s);
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, nameEOA, amount, consumeReasonCode, v, r, s);
       });
 
       it('consumes the balance', async function () {
-        const balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+        const balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
         expect(this.balanceBefore - balanceAfter).to.equal(amount);
       });
 
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.realmPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, this.realmIdOwner);
       });
     });
   });
 
-  describe('consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)', function () {
+  describe('consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32) - Contract Wallet(1271)', function () {
+    beforeEach(async function () {
+      await this.realmPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
+
+      this.currentSeason = await this.realmPoints.currentSeason();
+      const depositReasonCode = ethers.encodeBytes32String('depositReason');
+      await this.realmPoints
+        .connect(depositor)
+        ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
+          this.currentSeason,
+          parentNode,
+          name1271,
+          this.realmId1271Version,
+          amount,
+          depositReasonCode
+        );
+    });
+
+    it('reverts if realmId consumes with a non-exists consume reason code', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId1271);
+      const invalidconsumereasonCode = ethers.encodeBytes32String('invalidReason');
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId1271, this.realmId1271Version, consumer.address, amount, this.currentSeason, invalidconsumereasonCode, nonce]
+      );
+
+      const signature = await owner.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(consumer)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name1271, amount, invalidconsumereasonCode, v, r, s)
+      )
+        .to.be.revertedWithCustomError(this.RealmPointsContract, 'ConsumeReasonCodeDoesNotExist')
+        .withArgs(invalidconsumereasonCode);
+    });
+
+    it('reverts if signature is not signed from the realmId owner', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId1271);
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId1271, this.realmId1271Version, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
+      );
+
+      const signature = await other.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(consumer)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name1271, amount, consumeReasonCode, v, r, s)
+      ).to.be.revertedWithCustomError(this.RealmPointsContract, 'InvalidSignature');
+    });
+
+    it('reverts if the msg.sender is not the specified spender', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId1271);
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId1271, this.realmId1271Version, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
+      );
+
+      const signature = await owner.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(other)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name1271, amount, consumeReasonCode, v, r, s)
+      ).to.be.revertedWithCustomError(this.RealmPointsContract, 'InvalidSignature');
+    });
+
+    it('reverts if realmId balance is insufficient', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId1271);
+      const insufficientAmount = amount + 100;
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId1271, this.realmId1271Version, consumer.address, insufficientAmount, this.currentSeason, consumeReasonCode, nonce]
+      );
+
+      const signature = await owner.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(consumer)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name1271, insufficientAmount, consumeReasonCode, v, r, s)
+      )
+        .to.be.revertedWithCustomError(this.RealmPointsContract, 'InsufficientBalance')
+        .withArgs(this.realmId1271, insufficientAmount);
+    });
+
+    context('when successful', function () {
+      beforeEach(async function () {
+        this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name1271));
+        const nonce = await this.realmPoints.nonces(this.realmId1271);
+        const message = ethers.solidityPackedKeccak256(
+          ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+          [this.realmId1271, this.realmId1271Version, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
+        );
+
+        const signature = await owner.signMessage(ethers.getBytes(message));
+        const {v, r, s} = ethers.Signature.from(signature);
+
+        this.receipt = await this.realmPoints
+          .connect(consumer)
+          ['consume(bytes32,string,uint256,bytes32,uint8,bytes32,bytes32)'](parentNode, name1271, amount, consumeReasonCode, v, r, s);
+      });
+
+      it('consumes the balance', async function () {
+        const balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name1271));
+        expect(this.balanceBefore - balanceAfter).to.equal(amount);
+      });
+
+      it('emits Consumed event', async function () {
+        await expect(this.receipt)
+          .to.emit(this.realmPoints, 'Consumed')
+          .withArgs(
+            this.realmId1271,
+            this.currentSeason,
+            consumeReasonCode,
+            consumer.address,
+            this.realmId1271Version,
+            amount,
+            this.realmId1271Owner
+          );
+      });
+    });
+  });
+
+  describe('consume(uint256,uint256,bytes32,uint8,bytes32,bytes32) - EOA Wallet', function () {
     beforeEach(async function () {
       await this.realmPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
 
@@ -439,10 +590,10 @@ describe('RealmPoints Contract', function () {
       const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, this.realmIdOwner, amount, this.currentSeason, invalidconsumereasonCode, nonce]
+        [this.realmId, this.realmIdVersion, consumer.address, amount, this.currentSeason, invalidconsumereasonCode, nonce]
       );
 
-      const signature = await consumer.signMessage(ethers.getBytes(message));
+      const signature = await signerEOA.signMessage(ethers.getBytes(message));
       const {v, r, s} = ethers.Signature.from(signature);
 
       await expect(
@@ -458,7 +609,7 @@ describe('RealmPoints Contract', function () {
       const nonce = await this.realmPoints.nonces(this.realmId);
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, this.realmIdOwner, amount, this.currentSeason, consumeReasonCode, nonce]
+        [this.realmId, this.realmIdVersion, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
       );
 
       const signature = await other.signMessage(ethers.getBytes(message));
@@ -469,15 +620,30 @@ describe('RealmPoints Contract', function () {
       ).to.be.revertedWithCustomError(this.RealmPointsContract, 'InvalidSignature');
     });
 
+    it('reverts if msg.sender is not the specified spender', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId);
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId, this.realmIdVersion, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
+      );
+
+      const signature = await signerEOA.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints.connect(other)['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId, amount, consumeReasonCode, v, r, s)
+      ).to.be.revertedWithCustomError(this.RealmPointsContract, 'InvalidSignature');
+    });
+
     it('reverts if realmId balance is insufficient', async function () {
       const nonce = await this.realmPoints.nonces(this.realmId);
       const insufficientAmount = amount + 100;
       const message = ethers.solidityPackedKeccak256(
         ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-        [this.realmId, this.realmIdVersion, this.realmIdOwner, insufficientAmount, this.currentSeason, consumeReasonCode, nonce]
+        [this.realmId, this.realmIdVersion, consumer.address, insufficientAmount, this.currentSeason, consumeReasonCode, nonce]
       );
 
-      const signature = await consumer.signMessage(ethers.getBytes(message));
+      const signature = await signerEOA.signMessage(ethers.getBytes(message));
       const {v, r, s} = ethers.Signature.from(signature);
 
       await expect(
@@ -495,10 +661,10 @@ describe('RealmPoints Contract', function () {
         const nonce = await this.realmPoints.nonces(this.realmId);
         const message = ethers.solidityPackedKeccak256(
           ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
-          [this.realmId, this.realmIdVersion, this.realmIdOwner, amount, this.currentSeason, consumeReasonCode, nonce]
+          [this.realmId, this.realmIdVersion, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
         );
 
-        const signature = await consumer.signMessage(ethers.getBytes(message));
+        const signature = await signerEOA.signMessage(ethers.getBytes(message));
         const {v, r, s} = ethers.Signature.from(signature);
 
         this.receipt = await this.realmPoints
@@ -514,7 +680,128 @@ describe('RealmPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.realmPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, this.realmIdOwner);
+      });
+    });
+  });
+
+  describe('consume(uint256,uint256,bytes32,uint8,bytes32,bytes32) - Contract Wallet(1271)', function () {
+    beforeEach(async function () {
+      await this.realmPoints.connect(admin).batchAddConsumeReasonCodes([consumeReasonCode]);
+
+      this.currentSeason = await this.realmPoints.currentSeason();
+      const depositReasonCode = ethers.encodeBytes32String('depositReason');
+      await this.realmPoints
+        .connect(depositor)
+        ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](
+          this.currentSeason,
+          this.realmId1271,
+          this.realmId1271Version,
+          amount,
+          depositReasonCode
+        );
+    });
+
+    it('reverts if realmId consumes with a non-exists consume reason code', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId1271Version);
+      const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId1271, this.realmId1271Version, consumer.address, amount, this.currentSeason, invalidconsumereasonCode, nonce]
+      );
+
+      const signature = await owner.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(consumer)
+          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId1271, amount, invalidconsumereasonCode, v, r, s)
+      )
+        .to.be.revertedWithCustomError(this.RealmPointsContract, 'ConsumeReasonCodeDoesNotExist')
+        .withArgs(invalidconsumereasonCode);
+    });
+
+    it('reverts if signature is not signed from the realmId owner', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId1271);
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId1271, this.realmId1271Version, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
+      );
+
+      const signature = await other.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(consumer)
+          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId1271, amount, consumeReasonCode, v, r, s)
+      ).to.be.revertedWithCustomError(this.RealmPointsContract, 'InvalidSignature');
+    });
+
+    it('reverts if msg.sender is not the specified spender', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId1271);
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId1271, this.realmId1271Version, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
+      );
+
+      const signature = await owner.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(other)
+          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId1271, amount, consumeReasonCode, v, r, s)
+      ).to.be.revertedWithCustomError(this.RealmPointsContract, 'InvalidSignature');
+    });
+
+    it('reverts if realmId balance is insufficient', async function () {
+      const nonce = await this.realmPoints.nonces(this.realmId1271);
+      const insufficientAmount = amount + 100;
+      const message = ethers.solidityPackedKeccak256(
+        ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+        [this.realmId1271, this.realmId1271Version, consumer.address, insufficientAmount, this.currentSeason, consumeReasonCode, nonce]
+      );
+
+      const signature = await owner.signMessage(ethers.getBytes(message));
+      const {v, r, s} = ethers.Signature.from(signature);
+
+      await expect(
+        this.realmPoints
+          .connect(consumer)
+          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId1271, insufficientAmount, consumeReasonCode, v, r, s)
+      )
+        .to.be.revertedWithCustomError(this.RealmPointsContract, 'InsufficientBalance')
+        .withArgs(this.realmId1271, insufficientAmount);
+    });
+
+    context('when successful', function () {
+      beforeEach(async function () {
+        this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId1271));
+        const nonce = await this.realmPoints.nonces(this.realmId1271);
+        const message = ethers.solidityPackedKeccak256(
+          ['uint256', 'uint256', 'address', 'uint256', 'bytes32', 'bytes32', 'uint256'],
+          [this.realmId1271, this.realmId1271Version, consumer.address, amount, this.currentSeason, consumeReasonCode, nonce]
+        );
+
+        const signature = await owner.signMessage(ethers.getBytes(message));
+        const {v, r, s} = ethers.Signature.from(signature);
+
+        this.receipt = await this.realmPoints
+          .connect(consumer)
+          ['consume(uint256,uint256,bytes32,uint8,bytes32,bytes32)'](this.realmId1271, amount, consumeReasonCode, v, r, s);
+      });
+
+      it('consumes the balance', async function () {
+        const balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId1271));
+        expect(this.balanceBefore - balanceAfter).to.equal(amount);
+      });
+
+      it('emits Consumed event', async function () {
+        await expect(this.receipt)
+          .to.emit(this.realmPoints, 'Consumed')
+          .withArgs(this.realmId1271, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, this.realmId1271Owner);
       });
     });
   });
@@ -530,7 +817,7 @@ describe('RealmPoints Contract', function () {
         ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
           this.currentSeason,
           parentNode,
-          name,
+          nameEOA,
           this.realmIdVersion,
           amount,
           depositReasonCode
@@ -539,13 +826,15 @@ describe('RealmPoints Contract', function () {
 
     it('reverts if realmId consumes with a non-exists consume reason code', async function () {
       const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
-      await expect(this.realmPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, invalidconsumereasonCode))
+      await expect(
+        this.realmPoints.connect(signerEOA)['consume(bytes32,string,uint256,bytes32)'](parentNode, nameEOA, amount, invalidconsumereasonCode)
+      )
         .to.be.revertedWithCustomError(this.RealmPointsContract, 'ConsumeReasonCodeDoesNotExist')
         .withArgs(invalidconsumereasonCode);
     });
 
     it('reverts if msgSender is not the realmId owner', async function () {
-      await expect(this.realmPoints.connect(other)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode))
+      await expect(this.realmPoints.connect(other)['consume(bytes32,string,uint256,bytes32)'](parentNode, nameEOA, amount, consumeReasonCode))
         .to.be.revertedWithCustomError(this.RealmPointsContract, 'IncorrectSigner')
         .withArgs(other.address);
     });
@@ -553,7 +842,7 @@ describe('RealmPoints Contract', function () {
     it('reverts if realmId balance is insufficient', async function () {
       const insufficientAmount = amount + 100;
       await expect(
-        this.realmPoints.connect(consumer)['consume(bytes32,string,uint256,bytes32)'](parentNode, name, insufficientAmount, consumeReasonCode)
+        this.realmPoints.connect(signerEOA)['consume(bytes32,string,uint256,bytes32)'](parentNode, nameEOA, insufficientAmount, consumeReasonCode)
       )
         .to.be.revertedWithCustomError(this.RealmPointsContract, 'InsufficientBalance')
         .withArgs(this.realmId, insufficientAmount);
@@ -561,21 +850,21 @@ describe('RealmPoints Contract', function () {
 
     context('when successful', function () {
       beforeEach(async function () {
-        this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+        this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
         this.receipt = await this.realmPoints
-          .connect(consumer)
-          ['consume(bytes32,string,uint256,bytes32)'](parentNode, name, amount, consumeReasonCode);
+          .connect(signerEOA)
+          ['consume(bytes32,string,uint256,bytes32)'](parentNode, nameEOA, amount, consumeReasonCode);
       });
 
       it('consumes the balance', async function () {
-        const balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+        const balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
         expect(this.balanceBefore - balanceAfter).to.equal(amount);
       });
 
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.realmPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, signerEOA.address, this.realmIdVersion, amount, signerEOA.address);
       });
     });
   });
@@ -593,7 +882,7 @@ describe('RealmPoints Contract', function () {
 
     it('reverts if realmId consumes with a non-exists consume reason code', async function () {
       const invalidconsumereasonCode = ethers.encodeBytes32String('Reason2');
-      await expect(this.realmPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, amount, invalidconsumereasonCode))
+      await expect(this.realmPoints.connect(signerEOA)['consume(uint256,uint256,bytes32)'](this.realmId, amount, invalidconsumereasonCode))
         .to.be.revertedWithCustomError(this.RealmPointsContract, 'ConsumeReasonCodeDoesNotExist')
         .withArgs(invalidconsumereasonCode);
     });
@@ -606,7 +895,7 @@ describe('RealmPoints Contract', function () {
 
     it('reverts if realmId balance is insufficient', async function () {
       const insufficientAmount = amount + 100;
-      await expect(this.realmPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, insufficientAmount, consumeReasonCode))
+      await expect(this.realmPoints.connect(signerEOA)['consume(uint256,uint256,bytes32)'](this.realmId, insufficientAmount, consumeReasonCode))
         .to.be.revertedWithCustomError(this.RealmPointsContract, 'InsufficientBalance')
         .withArgs(this.realmId, insufficientAmount);
     });
@@ -614,7 +903,7 @@ describe('RealmPoints Contract', function () {
     context('when successful', function () {
       beforeEach(async function () {
         this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,uint256)'](this.currentSeason, this.realmId));
-        this.receipt = await this.realmPoints.connect(consumer)['consume(uint256,uint256,bytes32)'](this.realmId, amount, consumeReasonCode);
+        this.receipt = await this.realmPoints.connect(signerEOA)['consume(uint256,uint256,bytes32)'](this.realmId, amount, consumeReasonCode);
       });
 
       it('consumes the balance', async function () {
@@ -625,7 +914,7 @@ describe('RealmPoints Contract', function () {
       it('emits Consumed event', async function () {
         await expect(this.receipt)
           .to.emit(this.realmPoints, 'Consumed')
-          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, consumer.address, this.realmIdVersion, amount, consumer.address);
+          .withArgs(this.realmId, this.currentSeason, consumeReasonCode, signerEOA.address, this.realmIdVersion, amount, signerEOA.address);
       });
     });
   });
@@ -647,7 +936,7 @@ describe('RealmPoints Contract', function () {
         ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
           this.currentSeason,
           parentNode,
-          name,
+          nameEOA,
           this.realmIdVersion,
           amount,
           depositReasonCode
@@ -671,7 +960,7 @@ describe('RealmPoints Contract', function () {
   describe('balanceOf(bytes32,bytes32,string)', function () {
     beforeEach(async function () {
       this.currentSeason = await this.realmPoints.currentSeason();
-      this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+      this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
     });
 
     it('returns 0 if the realmId does not exist', async function () {
@@ -685,13 +974,13 @@ describe('RealmPoints Contract', function () {
         ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
           this.currentSeason,
           parentNode,
-          name,
+          nameEOA,
           this.realmIdVersion,
           amount,
           depositReasonCode
         );
 
-      this.balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+      this.balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
       expect(this.balanceAfter - this.balanceBefore).to.equal(amount);
     });
 
@@ -701,7 +990,7 @@ describe('RealmPoints Contract', function () {
         .connect(depositor)
         ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](this.currentSeason, this.realmId, this.realmIdVersion, amount, depositReasonCode);
 
-      this.balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, name));
+      this.balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,bytes32,string)'](this.currentSeason, parentNode, nameEOA));
       expect(this.balanceAfter - this.balanceBefore).to.equal(amount);
     });
   });
@@ -723,7 +1012,7 @@ describe('RealmPoints Contract', function () {
         ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
           this.currentSeason,
           parentNode,
-          name,
+          nameEOA,
           this.realmIdVersion,
           amount,
           depositReasonCode
@@ -747,7 +1036,7 @@ describe('RealmPoints Contract', function () {
   describe('balanceOf(bytes32,string)', function () {
     beforeEach(async function () {
       this.currentSeason = await this.realmPoints.currentSeason();
-      this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,string)'](parentNode, name));
+      this.balanceBefore = Number(await this.realmPoints['balanceOf(bytes32,string)'](parentNode, nameEOA));
     });
 
     it('returns 0 if the realmId does not exist', async function () {
@@ -761,13 +1050,13 @@ describe('RealmPoints Contract', function () {
         ['deposit(bytes32,bytes32,string,uint256,uint256,bytes32)'](
           this.currentSeason,
           parentNode,
-          name,
+          nameEOA,
           this.realmIdVersion,
           amount,
           depositReasonCode
         );
 
-      this.balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,string)'](parentNode, name));
+      this.balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,string)'](parentNode, nameEOA));
       expect(this.balanceAfter - this.balanceBefore).to.equal(amount);
     });
 
@@ -777,7 +1066,7 @@ describe('RealmPoints Contract', function () {
         .connect(depositor)
         ['deposit(bytes32,uint256,uint256,uint256,bytes32)'](this.currentSeason, this.realmId, this.realmIdVersion, amount, depositReasonCode);
 
-      this.balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,string)'](parentNode, name));
+      this.balanceAfter = Number(await this.realmPoints['balanceOf(bytes32,string)'](parentNode, nameEOA));
       expect(this.balanceAfter - this.balanceBefore).to.equal(amount);
     });
   });
