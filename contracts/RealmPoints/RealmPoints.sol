@@ -2,7 +2,7 @@
 pragma solidity ^0.8.9;
 
 import {IRealmId} from "./interface/IRealmId.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {AccessControlStorage} from "@animoca/ethereum-contracts/contracts/access/libraries/AccessControlStorage.sol";
 import {AccessControlBase} from "@animoca/ethereum-contracts/contracts/access/base/AccessControlBase.sol";
 import {ContractOwnershipBase} from "@animoca/ethereum-contracts/contracts/access/base/ContractOwnershipBase.sol";
@@ -10,12 +10,12 @@ import {ContractOwnershipStorage} from "@animoca/ethereum-contracts/contracts/ac
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-/// @title MocaPoints
+/// @title RealmPoints
 /// @notice This contract is designed for managing the point balances of RealmId.
 /// @notice Point balances are registered by realmId (verioned) by season.
 /// @notice Methods apply to the current version of the realmId if realmId version is not specified.
 /// @notice Methods support identifying the realmId by the realmId itself, or by its parent node and name.
-contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, UUPSUpgradeable {
+contract RealmPoints is Initializable, AccessControlBase, ContractOwnershipBase, UUPSUpgradeable {
     using ContractOwnershipStorage for ContractOwnershipStorage.Layout;
     using AccessControlStorage for AccessControlStorage.Layout;
 
@@ -113,6 +113,9 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param signer The incorrect signer.
     error IncorrectSigner(address signer);
 
+    /// @notice Thrown when the signature is invalid.
+    error InvalidSignature();
+
     /// @param realmIdContractAddress The realmId contract address.
     /// @dev Reverts if the given address is invalid (equal to ZeroAddress).
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -121,6 +124,7 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
             revert InvalidRealmIdContractAddress(realmIdContractAddress);
         }
         REALM_ID_CONTRACT = IRealmId(realmIdContractAddress);
+        _disableInitializers();
     }
 
     /// @notice Initializes the contract with the provided realmId contract address.
@@ -305,15 +309,16 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param s s value of the signature.
     /// @param r r value of the signature.
     function consume(uint256 realmId, uint256 amount, bytes32 consumeReasonCode, uint8 v, bytes32 r, bytes32 s) public {
-        // get realmIdVersion from the realmId contract
         uint256 nonce = nonces[realmId];
         uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
-        bytes32 messageHash = _preparePayload(realmId, realmIdVersion, amount, nonce, consumeReasonCode);
+        bytes32 messageHash = _preparePayload(realmId, realmIdVersion, _msgSender(), amount, nonce, consumeReasonCode);
         bytes32 messageDigest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
-        address signer = ECDSA.recover(messageDigest, v, r, s);
+
         address owner = REALM_ID_CONTRACT.ownerOf(realmId);
-        if (signer != owner) {
-            revert IncorrectSigner(signer);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        bool isValid = SignatureChecker.isValidSignatureNow(owner, messageDigest, signature);
+        if (!isValid) {
+            revert InvalidSignature();
         }
 
         _consume(realmId, realmIdVersion, amount, consumeReasonCode, owner);
@@ -424,11 +429,12 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     function _preparePayload(
         uint256 realmId,
         uint256 realmIdVersion,
+        address spender,
         uint256 amount,
         uint256 nonce,
         bytes32 reasonCode
     ) internal view returns (bytes32) {
-        bytes32 payload = keccak256(abi.encodePacked(realmId, realmIdVersion, amount, currentSeason, reasonCode, nonce));
+        bytes32 payload = keccak256(abi.encodePacked(realmId, realmIdVersion, spender, amount, currentSeason, reasonCode, nonce));
         return payload;
     }
 
@@ -438,9 +444,9 @@ contract MocaPoints is Initializable, AccessControlBase, ContractOwnershipBase, 
     /// @param amount The amount.
     /// @param reasonCode The reason code.
     /// @return The payload.
-    function preparePayload(uint256 realmId, uint256 amount, bytes32 reasonCode) external view returns (bytes32) {
+    function preparePayload(uint256 realmId, address spender, uint256 amount, bytes32 reasonCode) external view returns (bytes32) {
         uint256 realmIdVersion = REALM_ID_CONTRACT.burnCounts(realmId);
-        bytes32 payload = _preparePayload(realmId, realmIdVersion, amount, nonces[realmId], reasonCode);
+        bytes32 payload = _preparePayload(realmId, realmIdVersion, spender, amount, nonces[realmId], reasonCode);
         return payload;
     }
 }

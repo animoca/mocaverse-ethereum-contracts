@@ -1,7 +1,7 @@
 {
   "_format": "hh-sol-artifact-1",
   "contractName": "IRealmId",
-  "sourceName": "contracts/MocaPoints/interface/IRealmId.sol",
+  "sourceName": "contracts/RealmPoints/interface/IRealmId.sol",
   "abi": [
     {
       "inputs": [
