@@ -4,7 +4,7 @@ const {ethers, upgrades} = require('hardhat');
 const {loadFixture} = require('@animoca/ethereum-contract-helpers/src/test/fixtures');
 
 describe('SeasonalCumulativeMerkleClaim Contract', function () {
-  let owner, admin, other, claimer1, claimer2, claimer3, claimer4;
+  let owner, admin, other;
 
   const amount = 100;
   //test.moca
@@ -16,7 +16,7 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
   const currentSeason = ethers.encodeBytes32String(seasonStr);
 
   before(async function () {
-    [owner, admin, other, claimer1, claimer2, claimer3, claimer4] = await ethers.getSigners();
+    [owner, admin, other] = await ethers.getSigners();
   });
 
   const fixture = async function () {
@@ -25,8 +25,8 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
     this.mockRealmId = await MockRealmIdContract.deploy();
     this.mockRealmIdAddress = this.mockRealmId.target;
 
-    this.realmId = Number(await this.mockRealmId.getTokenId(name, parentNode));
-    this.realmIdVersion = Number(await this.mockRealmId.burnCounts(this.realmId));
+    this.realmId = await this.mockRealmId.getTokenId(name, parentNode);
+    this.realmIdVersion = await this.mockRealmId.burnCounts(this.realmId);
 
     // Deploy the RealmPoints contract
     this.RealmPointsContract = await ethers.getContractFactory('RealmPoints');
@@ -179,6 +179,7 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
 
   describe('claimPayout(bytes32,uint256,uint256,uint256,bytes32,bytes32)', function () {
     const amount = 1n;
+
     it('revets if the amount is not valid', async function () {
       await expect(this.claimContract.connect(other).claimPayout(currentSeason, 0, 0, 0, ethers.ZeroHash, [ethers.ZeroHash]))
         .to.be.revertedWithCustomError(this.claimContract, 'InvalidClaimAmount')
@@ -202,7 +203,7 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
         .withArgs(invalidSeason);
     });
 
-    context('with a merkle root set', async function () {
+    context('with a merkle root set', function () {
       beforeEach(async function () {
         this.nextNonce = (await this.claimContract.nonces(currentSeason)) + 1n;
         this.depositReasonCode = ethers.keccak256(ethers.toUtf8Bytes('testReasonCode'));
