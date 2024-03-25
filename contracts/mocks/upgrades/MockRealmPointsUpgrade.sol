@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-import {RealmPoints} from "../../RealmPoints.sol";
+import {RealmPoints} from "../../RealmPoints/RealmPoints.sol";
 
 contract MockRealmPointsUpgrade is RealmPoints {
     /// @custom:oz-upgrades-unsafe-allow constructor
