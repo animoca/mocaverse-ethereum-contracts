@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
-import {IRealmId} from "../RealmPoints/interface/IRealmId.sol";
 import {IRealmPoints} from "./interface/IRealmPoints.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {ContractOwnership} from "@animoca/ethereum-contracts/contracts/access/ContractOwnership.sol";
