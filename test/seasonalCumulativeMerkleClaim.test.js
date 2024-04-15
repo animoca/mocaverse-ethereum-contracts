@@ -64,7 +64,15 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
         .withArgs(other.address);
     });
 
+    it('reverts if the season does not have a merkle root', async function () {
+      await expect(this.claimContract.connect(owner).pause(currentSeason))
+        .to.be.revertedWithCustomError(this.claimContract, 'MerkleRootNotExists')
+        .withArgs(currentSeason);
+    });
+
     it('reverts it the season is already paused', async function () {
+      const root = ethers.keccak256(ethers.toUtf8Bytes('root'));
+      await this.claimContract.connect(owner).setMerkleRoot(currentSeason, root);
       await this.claimContract.connect(owner).pause(currentSeason);
       await expect(this.claimContract.connect(owner).pause(currentSeason))
         .to.be.revertedWithCustomError(this.claimContract, 'SeasonIsPaused')
@@ -73,6 +81,8 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
 
     context('when successful', function () {
       beforeEach(async function () {
+        const root = ethers.keccak256(ethers.toUtf8Bytes('root'));
+        await this.claimContract.connect(owner).setMerkleRoot(currentSeason, root);
         this.receipt = await this.claimContract.connect(owner).pause(currentSeason);
       });
 
@@ -93,7 +103,15 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
         .withArgs(other.address);
     });
 
+    it('reverts if the season does not have a merkle root', async function () {
+      await expect(this.claimContract.connect(owner).unpause(currentSeason))
+        .to.be.revertedWithCustomError(this.claimContract, 'MerkleRootNotExists')
+        .withArgs(currentSeason);
+    });
+
     it('reverts if the season is not paused', async function () {
+      const root = ethers.keccak256(ethers.toUtf8Bytes('root'));
+      await this.claimContract.connect(owner).setMerkleRoot(currentSeason, root);
       await expect(this.claimContract.connect(owner).unpause(currentSeason))
         .to.be.revertedWithCustomError(this.claimContract, 'SeasonNotPaused')
         .withArgs(currentSeason);
@@ -101,6 +119,8 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
 
     context('when successful', function () {
       beforeEach(async function () {
+        const root = ethers.keccak256(ethers.toUtf8Bytes('root'));
+        await this.claimContract.connect(owner).setMerkleRoot(currentSeason, root);
         await this.claimContract.connect(owner).pause(currentSeason);
         this.receipt = await this.claimContract.connect(owner).unpause(currentSeason);
       });
@@ -150,6 +170,10 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
 
       it('emits MerkleRootSet event', async function () {
         await expect(this.receipt).to.emit(this.claimContract, 'MerkleRootSet').withArgs(currentSeason, root);
+      });
+
+      it('unpauses the season', async function () {
+        expect(await this.claimContract.paused(currentSeason)).to.be.false;
       });
     });
 

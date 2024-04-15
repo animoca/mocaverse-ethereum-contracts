@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
-import {IRealmId} from "../RealmPoints/interface/IRealmId.sol";
 import {IRealmPoints} from "./interface/IRealmPoints.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {ContractOwnership} from "@animoca/ethereum-contracts/contracts/access/ContractOwnership.sol";
@@ -99,6 +98,9 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
     /// @param season The season to be paused.
     function pause(bytes32 season) external {
         ContractOwnershipStorage.layout().enforceIsContractOwner(msg.sender);
+        if (roots[season] == 0) {
+            revert MerkleRootNotExists(season);
+        }
         if (paused[season]) {
             revert SeasonIsPaused(season);
         }
@@ -122,6 +124,9 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
     /// @dev Emits an {Unpause} event.
     /// @param season The season to be unpaused.
     function _unpause(bytes32 season) internal {
+        if (roots[season] == 0) {
+            revert MerkleRootNotExists(season);
+        }
         if (!paused[season]) {
             revert SeasonNotPaused(season);
         }
@@ -140,11 +145,14 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
     function setMerkleRoot(bytes32 season, bytes32 merkleRoot) public {
         ContractOwnershipStorage.layout().enforceIsContractOwner(msg.sender);
 
-        bool isPaused = paused[season];
-
-        if (roots[season] != 0 && !isPaused) {
-            revert SeasonNotPaused(season);
+        if (roots[season] != 0) {
+            if (!paused[season]) {
+                revert SeasonNotPaused(season);
+            } else {
+                _unpause(season);
+            }
         }
+
         if (!REALM_POINTS_CONTRACT.seasons(season)) {
             revert InvalidSeason(season);
         }
@@ -154,10 +162,6 @@ contract SeasonalCumulativeMerkleClaim is ContractOwnership {
             ++nonces[season];
         }
         emit MerkleRootSet(season, merkleRoot);
-
-        if (isPaused) {
-            _unpause(season);
-        }
     }
 
     /// @notice Executes the payout for a given realmId (anyone can call this function).
