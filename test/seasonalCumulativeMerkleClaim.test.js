@@ -171,6 +171,10 @@ describe('SeasonalCumulativeMerkleClaim Contract', function () {
       it('emits MerkleRootSet event', async function () {
         await expect(this.receipt).to.emit(this.claimContract, 'MerkleRootSet').withArgs(currentSeason, root);
       });
+
+      it('unpauses the season', async function () {
+        expect(await this.claimContract.paused(currentSeason)).to.be.false;
+      });
     });
 
     context('when successful (update root)', function () {
