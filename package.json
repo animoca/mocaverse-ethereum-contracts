@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git@gitlab.outblaze.net:mocaverse/ethereum/contracts/mocaverse-ethereum-contracts-contract.git"
+    "url": "git@github.com:animoca/mocaverse-ethereum-contracts.git"
   },
   "scripts": {
     "postinstall": "bash -c 'for cfg in .vscode/settings.json .vscode/extensions.json .vscode/launch.json; do cp -n ${cfg}.default ${cfg} || :; done'",
